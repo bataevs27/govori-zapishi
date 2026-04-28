@@ -3,9 +3,9 @@ export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
 
 APP_BUNDLE="$(dirname "$(dirname "$(dirname "$0")")")"
 RESOURCES="$APP_BUNDLE/Contents/Resources"
-STENOGRAF_DIR="$HOME/Stenograf"
+STENOGRAF_DIR="$HOME/govori-zapishi"
 VENV_DIR="$STENOGRAF_DIR/venv"
-LOG="/tmp/stenograf.log"
+LOG="/tmp/gz.log"
 
 echo "=== $(date) ===" >> "$LOG"
 
@@ -49,7 +49,7 @@ if [ "$NEEDS_BREW" = true ]; then
     brew install --cask blackhole-2ch >> "$LOG" 2>&1
     if [ $? -ne 0 ]; then
         alert "Ошибка при установке зависимостей.
-Подробности: /tmp/stenograf.log"
+Подробности: /tmp/gz.log"
         exit 1
     fi
     notify "Готово" "Зависимости установлены"
@@ -64,7 +64,7 @@ if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requ
         >> "$LOG" 2>&1
     if [ $? -ne 0 ]; then
         alert "Ошибка при установке Python-пакетов.
-Подробности: /tmp/stenograf.log"
+Подробности: /tmp/gz.log"
         exit 1
     fi
     notify "Готово" "Пакеты установлены, запускаю Stenograf..."

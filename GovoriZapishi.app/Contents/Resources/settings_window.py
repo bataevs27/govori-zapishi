@@ -8,8 +8,8 @@ import json
 import subprocess
 import requests
 
-CONFIG_FILE = os.path.expanduser("~/.stenograf_config.json")
-TOKEN_FILE  = os.path.expanduser("~/.stenograf_token")
+CONFIG_FILE = os.path.expanduser("~/.gz_config.json")
+TOKEN_FILE  = os.path.expanduser("~/.gz_token")
 HF_TOKEN_URL = "https://huggingface.co/settings/tokens"
 HF_LICENSES = [
     ("Диаризация спикеров",   "pyannote/speaker-diarization-3.1"),

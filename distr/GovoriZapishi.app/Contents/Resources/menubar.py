@@ -15,12 +15,12 @@ import json
 from Foundation import NSOperationQueue
 
 SAMPLE_RATE = 48000
-TOKEN_FILE    = os.path.expanduser("~/.stenograf_token")
-STATS_FILE    = os.path.expanduser("~/.stenograf_stats.json")
-CONFIG_FILE   = os.path.expanduser("~/.stenograf_config.json")
+TOKEN_FILE    = os.path.expanduser("~/.gz_token")
+STATS_FILE    = os.path.expanduser("~/.gz_stats.json")
+CONFIG_FILE   = os.path.expanduser("~/.gz_config.json")
 DEFAULT_MEETING_DIR = os.path.expanduser("~/Documents/Stenograf/Встречи")
 DEFAULT_NOTE_DIR    = os.path.expanduser("~/Documents/Stenograf/Заметки")
-AUDIO_DIR     = os.path.expanduser("~/Library/Application Support/Stenograf/audio")
+AUDIO_DIR     = os.path.expanduser("~/Library/Application Support/GovoriZapishi/audio")
 AUDIO_RETENTION_DAYS = 7
 
 BLACKHOLE_URL = "https://existential.audio/blackhole/"
@@ -259,7 +259,7 @@ class TranscribeApp(rumps.App):
 
     def _prompt_token(self, _):
         response = rumps.Window(
-            title="Stenograf — Токен HuggingFace",
+            title="Govori-Zapishi — Токен HuggingFace",
             message=f"Вставьте токен (тип Read).\nПолучить: {HF_TOKEN_URL}",
             default_text="hf_...", ok="Сохранить", cancel="Отмена",
             dimensions=(380, 24),
@@ -518,7 +518,7 @@ class TranscribeApp(rumps.App):
         subtitle  = "Встреча готова" if rec_type == 'meeting' else "Заметка готова"
         def notify():
             self.status_item.title = f"✓ {basename}"
-            rumps.notification(title="Stenograf", subtitle=subtitle, message=basename)
+            rumps.notification(title="Govori-Zapishi", subtitle=subtitle, message=basename)
         self._ui(notify)
 
     def _tick_processing(self, _):

@@ -16,21 +16,21 @@ fi
 TAG="v$VERSION"
 
 echo "→ Синхронизирую скрипты в бандл..."
-cp menubar.py Stenograf.app/Contents/Resources/menubar.py
-cp settings_window.py Stenograf.app/Contents/Resources/settings_window.py
-cp menubar.py distr/Stenograf.app/Contents/Resources/menubar.py
-cp settings_window.py distr/Stenograf.app/Contents/Resources/settings_window.py
+cp menubar.py GovoriZapishi.app/Contents/Resources/menubar.py
+cp settings_window.py GovoriZapishi.app/Contents/Resources/settings_window.py
+cp menubar.py distr/GovoriZapishi.app/Contents/Resources/menubar.py
+cp settings_window.py distr/GovoriZapishi.app/Contents/Resources/settings_window.py
 
 echo "→ Синхронизирую гайд в distr..."
 cp GUIDE.md distr/GUIDE.md
 
 echo "→ Обновляю версию в Info.plist..."
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Stenograf.app/Contents/Info.plist
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" distr/Stenograf.app/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" GovoriZapishi.app/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" distr/GovoriZapishi.app/Contents/Info.plist
 
 echo "→ Создаю архив для релиза..."
 cd distr
-zip -r "../release_${TAG}.zip" Stenograf.app GUIDE.md
+zip -r "../release_${TAG}.zip" GovoriZapishi.app GUIDE.md
 cd ..
 
 echo "→ Коммит и тег..."
