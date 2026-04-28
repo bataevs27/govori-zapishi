@@ -1,0 +1,75 @@
+#!/bin/bash
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
+
+APP_BUNDLE="$(dirname "$(dirname "$(dirname "$0")")")"
+RESOURCES="$APP_BUNDLE/Contents/Resources"
+STENOGRAF_DIR="$HOME/Stenograf"
+VENV_DIR="$STENOGRAF_DIR/venv"
+LOG="/tmp/stenograf.log"
+
+echo "=== $(date) ===" >> "$LOG"
+
+notify() {
+    osascript -e "display notification \"$2\" with title \"Stenograf\" subtitle \"$1\"" 2>/dev/null
+}
+
+alert() {
+    osascript -e "display alert \"Stenograf\" message \"$1\" buttons {\"OK\"} default button \"OK\"" 2>/dev/null
+}
+
+# ── Скрипты из бандла ─────────────────────────────────────────────────────────
+mkdir -p "$STENOGRAF_DIR"
+cp "$RESOURCES/menubar.py" "$STENOGRAF_DIR/menubar.py"
+cp "$RESOURCES/settings_window.py" "$STENOGRAF_DIR/settings_window.py"
+
+# ── Homebrew ──────────────────────────────────────────────────────────────────
+if ! command -v brew &>/dev/null; then
+    osascript -e 'tell application "Terminal"
+        activate
+        do script "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    end tell' 2>/dev/null
+    alert "Homebrew устанавливается в Terminal.
+
+После завершения установки:
+1. Выполните команды из раздела «Next steps»
+2. Перезапустите Stenograf"
+    exit 0
+fi
+
+# ── Python 3.11, ffmpeg, python-tk, BlackHole ────────────────────────────────
+NEEDS_BREW=false
+command -v python3.11 &>/dev/null         || NEEDS_BREW=true
+command -v ffmpeg &>/dev/null              || NEEDS_BREW=true
+python3.11 -c "import tkinter" 2>/dev/null || NEEDS_BREW=true
+system_profiler SPAudioDataType 2>/dev/null | grep -q "BlackHole" || NEEDS_BREW=true
+
+if [ "$NEEDS_BREW" = true ]; then
+    notify "Установка..." "Python, ffmpeg, tkinter, BlackHole — 3-5 мин"
+    brew install python@3.11 ffmpeg python-tk@3.11 >> "$LOG" 2>&1
+    brew install --cask blackhole-2ch >> "$LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        alert "Ошибка при установке зависимостей.
+Подробности: /tmp/stenograf.log"
+        exit 1
+    fi
+    notify "Готово" "Зависимости установлены"
+fi
+
+# ── Python-пакеты ─────────────────────────────────────────────────────────────
+if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests" 2>/dev/null; then
+    notify "Установка..." "Python-пакеты — 5-10 мин, не закрывайте"
+    python3.11 -m venv "$VENV_DIR" >> "$LOG" 2>&1
+    "$VENV_DIR/bin/pip" install --quiet \
+        sounddevice soundfile mlx-whisper numpy pyannote.audio rumps requests \
+        >> "$LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        alert "Ошибка при установке Python-пакетов.
+Подробности: /tmp/stenograf.log"
+        exit 1
+    fi
+    notify "Готово" "Пакеты установлены, запускаю Stenograf..."
+fi
+
+# ── Запуск ────────────────────────────────────────────────────────────────────
+source "$VENV_DIR/bin/activate"
+python3 "$STENOGRAF_DIR/menubar.py" >> "$LOG" 2>&1
