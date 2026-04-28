@@ -3,13 +3,12 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
+release_*.zip
 
-# Аудиозаписи и транскрипты (личные данные)
-Транскрипты/
-Заметки/
+# Личные данные
+*.flac
 
-# Логи
-/tmp/stenograf.log
-
-# Конфиги с токенами (у каждого свои)
-~/.stenograf_*
+# В репо идут только .app и GUIDE.md
+menubar.py
+settings_window.py
+release.sh

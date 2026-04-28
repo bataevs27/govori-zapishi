@@ -70,11 +70,10 @@ def add_paste_menu(entry):
 class SettingsApp:
     def __init__(self, root):
         self.root = root
-        root.title("Stenograf — Настройки")
+        root.title("Govori-Zapishi — Настройки")
         root.resizable(False, False)
         root.lift()
-        root.attributes("-topmost", True)
-        root.after(200, lambda: root.attributes("-topmost", False))
+        root.focus_force()
         ttk.Style().theme_use("aqua")
         self._build()
 

@@ -5,9 +5,8 @@ import requests
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
-import mlx_whisper
-import torch
-from pyannote.audio import Pipeline
+# mlx_whisper, torch, pyannote импортируются лениво внутри _load_whisper/_load_pipeline
+# чтобы приложение появилось в меню-баре мгновенно
 import datetime
 import os
 import subprocess
@@ -271,20 +270,24 @@ class TranscribeApp(rumps.App):
         threading.Thread(target=self._preload, daemon=True).start()
 
     def _load_whisper(self):
+        import mlx_whisper as _mlx
+        import tempfile
         MLX_MODEL = "mlx-community/whisper-medium-mlx"
         hf_cache = os.path.expanduser("~/.cache/huggingface/hub/models--mlx-community--whisper-medium-mlx")
         label = "Загружаю Whisper MLX..." if os.path.exists(hf_cache) else "Скачиваю Whisper medium MLX (~500 МБ)..."
         self._ui(lambda: setattr(self.status_item, 'title', label))
-        import tempfile
         silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
         sf.write(tmp_path, silence, SAMPLE_RATE)
-        mlx_whisper.transcribe(tmp_path, path_or_hf_repo=MLX_MODEL)
+        _mlx.transcribe(tmp_path, path_or_hf_repo=MLX_MODEL)
         os.unlink(tmp_path)
         self.model = MLX_MODEL
+        self._mlx = _mlx  # сохраняем для использования при транскрипции
 
     def _load_pipeline(self, token):
+        import torch
+        from pyannote.audio import Pipeline
         self._ui(lambda: setattr(self.status_item, 'title', "Загружаю модель диаризации..."))
         try:
             self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=token)
@@ -445,7 +448,7 @@ class TranscribeApp(rumps.App):
         self._ui(start_timer)
 
         try:
-            result = mlx_whisper.transcribe(audio_path, path_or_hf_repo=self.model, language="ru")
+            result = self._mlx.transcribe(audio_path, path_or_hf_repo=self.model, language="ru")
         except Exception as e:
             err = str(e)
             def show_err():
