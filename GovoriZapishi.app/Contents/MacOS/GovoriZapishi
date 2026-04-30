@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/arch -arm64 /bin/bash
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
 
+BREW="/opt/homebrew/bin/brew"
 APP_BUNDLE="$(dirname "$(dirname "$(dirname "$0")")")"
 RESOURCES="$APP_BUNDLE/Contents/Resources"
 GZ_DIR="$HOME/govori-zapishi"
@@ -19,7 +20,7 @@ cp "$RESOURCES/menubar.py" "$GZ_DIR/menubar.py"
 cp "$RESOURCES/settings_window.py" "$GZ_DIR/settings_window.py"
 
 # ── Homebrew ──────────────────────────────────────────────────────────────────
-if ! command -v brew &>/dev/null; then
+if ! [ -x "$BREW" ]; then
     osascript -e 'tell application "Terminal"
         activate
         do script "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
@@ -28,18 +29,35 @@ if ! command -v brew &>/dev/null; then
     exit 0
 fi
 
-# ── Python 3.11, ffmpeg, python-tk, BlackHole ────────────────────────────────
+# ── Поиск Python 3.11+ (любая версия) ────────────────────────────────────────
+find_python() {
+    python3 -c \
+        "import sys; print(sys.executable) if sys.version_info >= (3,11) else exit(1)" \
+        2>/dev/null || true
+}
+PYTHON=$(find_python)
+
+# ── Проверка зависимостей ─────────────────────────────────────────────────────
 NEEDS_BREW=false
-command -v python3.11 &>/dev/null         || NEEDS_BREW=true
-command -v ffmpeg &>/dev/null              || NEEDS_BREW=true
-python3.11 -c "import tkinter" 2>/dev/null || NEEDS_BREW=true
-system_profiler SPAudioDataType 2>/dev/null | grep -q "BlackHole" || NEEDS_BREW=true
+[ -z "$PYTHON" ]                                                            && NEEDS_BREW=true
+command -v ffmpeg &>/dev/null                                               || NEEDS_BREW=true
+[ -n "$PYTHON" ] && "$PYTHON" -c "import tkinter" 2>/dev/null              || NEEDS_BREW=true
+system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
+    || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]            || NEEDS_BREW=true
 
 if [ "$NEEDS_BREW" = true ]; then
     notify "Установка..." "Python, ffmpeg, BlackHole — 3-5 мин"
-    brew install python@3.11 ffmpeg python-tk@3.11 >> "$LOG" 2>&1
-    brew install --cask blackhole-2ch >> "$LOG" 2>&1
-    if [ $? -ne 0 ]; then
+    [ -z "$PYTHON" ] && "$BREW" install python@3.11 >> "$LOG" 2>&1
+    command -v ffmpeg &>/dev/null || "$BREW" install ffmpeg >> "$LOG" 2>&1
+    { [ -n "$PYTHON" ] && "$PYTHON" -c "import tkinter" 2>/dev/null; } \
+        || "$BREW" install python-tk@3.11 >> "$LOG" 2>&1
+    { system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
+        || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; } \
+        || "$BREW" install --cask blackhole-2ch >> "$LOG" 2>&1
+
+    # Повторный поиск python после возможной установки
+    PYTHON=$(find_python)
+    if [ -z "$PYTHON" ]; then
         notify "Ошибка" "Не удалось установить зависимости. См. /tmp/gz.log"
         exit 1
     fi
@@ -48,7 +66,7 @@ fi
 # ── Python-пакеты ─────────────────────────────────────────────────────────────
 if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests, AppKit" 2>/dev/null; then
     notify "Установка..." "Python-пакеты — 5-10 мин"
-    python3.11 -m venv "$VENV_DIR" >> "$LOG" 2>&1
+    "$PYTHON" -m venv "$VENV_DIR" >> "$LOG" 2>&1
     "$VENV_DIR/bin/pip" install --quiet \
         sounddevice soundfile mlx-whisper numpy pyannote.audio rumps requests \
         >> "$LOG" 2>&1
