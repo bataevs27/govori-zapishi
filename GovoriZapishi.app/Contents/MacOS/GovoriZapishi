@@ -7,6 +7,7 @@ RESOURCES="$APP_BUNDLE/Contents/Resources"
 GZ_DIR="$HOME/govori-zapishi"
 VENV_DIR="$GZ_DIR/venv"
 LOG="/tmp/gz.log"
+PROGRESS="/tmp/gz_install_progress"
 
 echo "=== $(date) ===" >> "$LOG"
 
@@ -16,8 +17,9 @@ notify() {
 
 # ── Скрипты из бандла ─────────────────────────────────────────────────────────
 mkdir -p "$GZ_DIR"
-cp "$RESOURCES/menubar.py" "$GZ_DIR/menubar.py"
+cp "$RESOURCES/menubar.py"       "$GZ_DIR/menubar.py"
 cp "$RESOURCES/settings_window.py" "$GZ_DIR/settings_window.py"
+cp "$RESOURCES/installer_ui.py"  "$GZ_DIR/installer_ui.py"
 
 # ── Homebrew ──────────────────────────────────────────────────────────────────
 if ! [ -x "$BREW" ]; then
@@ -37,7 +39,7 @@ find_python() {
 }
 PYTHON=$(find_python)
 
-# ── Проверка зависимостей ─────────────────────────────────────────────────────
+# ── Brew-зависимости (тихо, без UI) ──────────────────────────────────────────
 NEEDS_BREW=false
 [ -z "$PYTHON" ]                                                            && NEEDS_BREW=true
 command -v ffmpeg &>/dev/null                                               || NEEDS_BREW=true
@@ -46,33 +48,28 @@ system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
     || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]            || NEEDS_BREW=true
 
 if [ "$NEEDS_BREW" = true ]; then
-    notify "Установка..." "Python, ffmpeg, BlackHole — 3-5 мин"
-
-    # Python
+    # Python (если нет — устанавливаем тихо, UI запустим после)
     if [ -z "$PYTHON" ]; then
         "$BREW" install python@3.11 python-tk@3.11 >> "$LOG" 2>&1
         PYTHON=$(find_python)
         if [ -z "$PYTHON" ]; then
-            notify "Ошибка" "Не удалось установить зависимости. См. /tmp/gz.log"
+            notify "Ошибка" "Не удалось установить Python. См. /tmp/gz.log"
             exit 1
         fi
     fi
 
-    # tkinter — определяем версию найденного Python и ставим совпадающий пакет
+    # tkinter — ставим совпадающий пакет для найденного Python
     if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
         PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
         "$BREW" install "python-tk@$PY_VER" >> "$LOG" 2>&1
-        # Если Homebrew ещё не имеет python-tk для этой версии — fallback на 3.11
         if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
             "$BREW" install python@3.11 python-tk@3.11 >> "$LOG" 2>&1
             PYTHON="/opt/homebrew/bin/python3.11"
         fi
     fi
 
-    # ffmpeg
+    # ffmpeg и BlackHole — тихо
     command -v ffmpeg &>/dev/null || "$BREW" install ffmpeg >> "$LOG" 2>&1
-
-    # BlackHole
     { system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
         || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; } \
         || "$BREW" install --cask blackhole-2ch >> "$LOG" 2>&1
@@ -80,16 +77,30 @@ fi
 
 # ── Python-пакеты ─────────────────────────────────────────────────────────────
 if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests, AppKit" 2>/dev/null; then
-    notify "Установка..." "Python-пакеты — 5-10 мин"
+    # Запускаем окно прогресса
+    rm -f "$PROGRESS"
+    "$PYTHON" "$GZ_DIR/installer_ui.py" &
+    UI_PID=$!
+
+    # Устанавливаем пакеты по одному — обновляем прогресс
+    PACKAGES=(sounddevice soundfile numpy rumps requests mlx-whisper "pyannote.audio")
+    TOTAL=${#PACKAGES[@]}
+
     "$PYTHON" -m venv --clear "$VENV_DIR" >> "$LOG" 2>&1
-    "$VENV_DIR/bin/pip" install --quiet \
-        sounddevice soundfile mlx-whisper numpy pyannote.audio rumps requests \
-        >> "$LOG" 2>&1
-    if [ $? -ne 0 ]; then
+
+    for i in "${!PACKAGES[@]}"; do
+        pkg="${PACKAGES[$i]}"
+        echo "$pkg|$((i + 1))|$TOTAL" > "$PROGRESS"
+        "$VENV_DIR/bin/pip" install --quiet "$pkg" >> "$LOG" 2>&1
+    done
+
+    echo "done" > "$PROGRESS"
+    wait "$UI_PID" 2>/dev/null
+
+    if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests" 2>/dev/null; then
         notify "Ошибка" "Не удалось установить пакеты. См. /tmp/gz.log"
         exit 1
     fi
-    notify "Готово" "Пакеты установлены"
 fi
 
 # ── Запуск ────────────────────────────────────────────────────────────────────
