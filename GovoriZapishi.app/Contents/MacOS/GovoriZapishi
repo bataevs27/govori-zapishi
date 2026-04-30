@@ -41,32 +41,47 @@ PYTHON=$(find_python)
 NEEDS_BREW=false
 [ -z "$PYTHON" ]                                                            && NEEDS_BREW=true
 command -v ffmpeg &>/dev/null                                               || NEEDS_BREW=true
-[ -n "$PYTHON" ] && "$PYTHON" -c "import tkinter" 2>/dev/null              || NEEDS_BREW=true
+[ -n "$PYTHON" ] && ! "$PYTHON" -c "import tkinter" 2>/dev/null            && NEEDS_BREW=true
 system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
     || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]            || NEEDS_BREW=true
 
 if [ "$NEEDS_BREW" = true ]; then
     notify "Установка..." "Python, ffmpeg, BlackHole — 3-5 мин"
-    [ -z "$PYTHON" ] && "$BREW" install python@3.11 >> "$LOG" 2>&1
+
+    # Python
+    if [ -z "$PYTHON" ]; then
+        "$BREW" install python@3.11 python-tk@3.11 >> "$LOG" 2>&1
+        PYTHON=$(find_python)
+        if [ -z "$PYTHON" ]; then
+            notify "Ошибка" "Не удалось установить зависимости. См. /tmp/gz.log"
+            exit 1
+        fi
+    fi
+
+    # tkinter — определяем версию найденного Python и ставим совпадающий пакет
+    if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
+        PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        "$BREW" install "python-tk@$PY_VER" >> "$LOG" 2>&1
+        # Если Homebrew ещё не имеет python-tk для этой версии — fallback на 3.11
+        if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
+            "$BREW" install python@3.11 python-tk@3.11 >> "$LOG" 2>&1
+            PYTHON="/opt/homebrew/bin/python3.11"
+        fi
+    fi
+
+    # ffmpeg
     command -v ffmpeg &>/dev/null || "$BREW" install ffmpeg >> "$LOG" 2>&1
-    { [ -n "$PYTHON" ] && "$PYTHON" -c "import tkinter" 2>/dev/null; } \
-        || "$BREW" install python-tk@3.11 >> "$LOG" 2>&1
+
+    # BlackHole
     { system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
         || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; } \
         || "$BREW" install --cask blackhole-2ch >> "$LOG" 2>&1
-
-    # Повторный поиск python после возможной установки
-    PYTHON=$(find_python)
-    if [ -z "$PYTHON" ]; then
-        notify "Ошибка" "Не удалось установить зависимости. См. /tmp/gz.log"
-        exit 1
-    fi
 fi
 
 # ── Python-пакеты ─────────────────────────────────────────────────────────────
 if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests, AppKit" 2>/dev/null; then
     notify "Установка..." "Python-пакеты — 5-10 мин"
-    "$PYTHON" -m venv "$VENV_DIR" >> "$LOG" 2>&1
+    "$PYTHON" -m venv --clear "$VENV_DIR" >> "$LOG" 2>&1
     "$VENV_DIR/bin/pip" install --quiet \
         sounddevice soundfile mlx-whisper numpy pyannote.audio rumps requests \
         >> "$LOG" 2>&1
@@ -78,5 +93,4 @@ if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requ
 fi
 
 # ── Запуск ────────────────────────────────────────────────────────────────────
-source "$VENV_DIR/bin/activate"
-python3 "$GZ_DIR/menubar.py" >> "$LOG" 2>&1
+"$VENV_DIR/bin/python3" "$GZ_DIR/menubar.py" >> "$LOG" 2>&1
