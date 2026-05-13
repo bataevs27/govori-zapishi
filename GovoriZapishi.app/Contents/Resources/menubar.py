@@ -241,9 +241,9 @@ class TranscribeApp(rumps.App):
         session_done = [i for i in queue if i.get("timestamp") in self._session_done]
         rows = [(i, True) for i in session_done] + [(i, False) for i in pending]
 
-        # Кнопка «Обработать» — только в ручном режиме при наличии pending
+        # Кнопка «Обработать все» — только в ручном режиме, при наличии pending, и не во время обработки
         auto_process = load_config().get("auto_process", True)
-        self.process_btn.hidden = auto_process or not pending
+        self.process_btn.hidden = auto_process or not pending or self._processing
 
         if not rows:
             return
@@ -258,12 +258,13 @@ class TranscribeApp(rumps.App):
             type_str = "встреча" if rec.get("type") == "meeting" else "заметка"
             mark  = "✅" if done else "✗ "
             title = f"{mark}  {type_str} {dt.strftime('%d.%m %H:%M')}"
-            if done:
-                cb = lambda _: None
+            if done or self._processing:
+                mi = rumps.MenuItem(title, callback=lambda _: None)
+                if not done:
+                    mi._menuitem.setEnabled_(False)  # серый пока идёт обработка
             else:
                 ts = rec["timestamp"]
-                cb = lambda _, t=ts: self._process_single(t)
-            mi = rumps.MenuItem(title, callback=cb)
+                mi = rumps.MenuItem(title, callback=lambda _, t=ts: self._process_single(t))
             ns_menu.insertItem_atIndex_(mi._menuitem, insert_at)
             self._dynamic_items.append(mi)
             insert_at += 1
@@ -555,6 +556,7 @@ class TranscribeApp(rumps.App):
 
         # Запускаем только этот один элемент
         self._processing = True
+        self._refresh_recordings_menu()  # сразу дизейблим на main thread
         def run():
             self._process_item(item)
             self._processing = False
@@ -586,6 +588,7 @@ class TranscribeApp(rumps.App):
 
     def _process_queue(self):
         self._processing = True
+        self._ui(self._refresh_recordings_menu)
         while True:
             with self._queue_lock:
                 if not self._queue: break
