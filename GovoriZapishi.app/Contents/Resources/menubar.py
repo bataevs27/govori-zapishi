@@ -196,7 +196,7 @@ class TranscribeApp(rumps.App):
         self.token_btn         = rumps.MenuItem("🔑 Ввести токен HuggingFace →", callback=self._prompt_token)
         self.meeting_btn       = rumps.MenuItem("🤝 Записать встречу",  callback=self._toggle_meeting)
         self.note_btn          = rumps.MenuItem("📝 Записать заметку",  callback=self._toggle_note)
-        self.process_btn       = rumps.MenuItem("▶ Обработать записи",  callback=self._process_all_pending)
+        self.process_btn       = rumps.MenuItem("▶ Обработать все записи", callback=self._process_all_pending)
         self.open_meetings_btn = rumps.MenuItem("📁 Открыть встречи",   callback=self._open_meetings)
         self.open_notes_btn    = rumps.MenuItem("📁 Открыть заметки",   callback=self._open_notes)
         self.settings_btn      = rumps.MenuItem("⚙️ Настройки",      callback=self._open_settings)
@@ -258,7 +258,12 @@ class TranscribeApp(rumps.App):
             type_str = "встреча" if rec.get("type") == "meeting" else "заметка"
             mark  = "✅" if done else "✗ "
             title = f"{mark}  {type_str} {dt.strftime('%d.%m %H:%M')}"
-            mi = rumps.MenuItem(title, callback=lambda _: None)
+            if done:
+                cb = lambda _: None
+            else:
+                ts = rec["timestamp"]
+                cb = lambda _, t=ts: self._process_single(t)
+            mi = rumps.MenuItem(title, callback=cb)
             ns_menu.insertItem_atIndex_(mi._menuitem, insert_at)
             self._dynamic_items.append(mi)
             insert_at += 1
@@ -532,6 +537,34 @@ class TranscribeApp(rumps.App):
             threading.Thread(target=self._process_queue, daemon=True).start()
 
     # ── Обработка по запросу ───────────────────────────────────────────────────
+
+    def _process_single(self, timestamp):
+        """Обрабатывает одну конкретную запись по timestamp."""
+        queue = load_queue_file()
+        item  = next((i for i in queue
+                      if i.get("timestamp") == timestamp and i.get("status") == "pending"), None)
+        if not item:
+            return
+
+        if self._processing:
+            # Уже идёт обработка — ставим этот элемент следующим
+            with self._queue_lock:
+                self._queue = [i for i in self._queue if i.get("timestamp") != timestamp]
+                self._queue.insert(0, item)
+            return
+
+        # Запускаем только этот один элемент
+        self._processing = True
+        def run():
+            self._process_item(item)
+            self._processing = False
+            def done():
+                self.processing_item.hidden = True
+                self.status_item.hidden = False
+                self._refresh_recordings_menu()
+                self._update_app_title()
+            self._ui(done)
+        threading.Thread(target=run, daemon=True).start()
 
     def _process_all_pending(self, _):
         queue   = load_queue_file()
