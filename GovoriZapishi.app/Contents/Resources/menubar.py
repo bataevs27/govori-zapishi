@@ -266,13 +266,6 @@ class TranscribeApp(rumps.App):
             self._dynamic_items.append(mi)
             insert_at += 1
 
-        sep_ns = AppKit.NSMenuItem.separatorItem()
-        ns_menu.insertItem_atIndex_(sep_ns, insert_at)
-        # Wrap in dummy MenuItem so we can removeItem_ later
-        sep_wrapper = rumps.MenuItem("")
-        sep_wrapper._menuitem = sep_ns
-        self._dynamic_items.append(sep_wrapper)
-
     def _update_app_title(self):
         if self.recording or self._processing:
             return
