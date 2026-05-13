@@ -236,10 +236,9 @@ class TranscribeApp(rumps.App):
             ns_menu.removeItem_(mi._menuitem)
         self._dynamic_items = []
 
-        queue  = load_queue_file()
-        pending      = [i for i in queue if i.get("status") == "pending"]
-        session_done = [i for i in queue if i.get("timestamp") in self._session_done]
-        rows = [(i, True) for i in session_done] + [(i, False) for i in pending]
+        queue   = load_queue_file()
+        pending = [i for i in queue if i.get("status") == "pending"]
+        rows    = [(i, False) for i in pending]
 
         # Кнопка «Обработать все» — только в ручном режиме, при наличии pending, и не во время обработки
         auto_process = load_config().get("auto_process", True)
@@ -250,18 +249,16 @@ class TranscribeApp(rumps.App):
 
         insert_at = ns_menu.indexOfItem_(self.status_item._menuitem)
 
-        for rec, done in rows:
+        for rec, _ in rows:
             try:
                 dt = datetime.datetime.fromisoformat(rec["start_dt"])
             except Exception:
                 dt = datetime.datetime.now()
             type_str = "встреча" if rec.get("type") == "meeting" else "заметка"
-            mark  = "✅" if done else "✗ "
-            title = f"{mark}  {type_str} {dt.strftime('%d.%m %H:%M')}"
-            if done or self._processing:
+            title = f"✗   {type_str} {dt.strftime('%d.%m %H:%M')}"
+            if self._processing:
                 mi = rumps.MenuItem(title, callback=lambda _: None)
-                if not done:
-                    mi._menuitem.setEnabled_(False)  # серый пока идёт обработка
+                mi._menuitem.setEnabled_(False)
             else:
                 ts = rec["timestamp"]
                 mi = rumps.MenuItem(title, callback=lambda _, t=ts: self._process_single(t))
