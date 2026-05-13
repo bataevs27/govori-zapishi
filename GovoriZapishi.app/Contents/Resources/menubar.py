@@ -22,7 +22,6 @@ DEFAULT_NOTE_DIR    = os.path.expanduser("~/Documents/Stenograf/Заметки")
 AUDIO_DIR     = os.path.expanduser("~/Library/Application Support/GovoriZapishi/audio")
 AUDIO_RETENTION_DAYS = 7
 
-BLACKHOLE_URL = "https://existential.audio/blackhole/"
 HF_TOKEN_URL  = "https://huggingface.co/settings/tokens"
 HF_LICENSES = [
     ("Диаризация спикеров",  "pyannote/speaker-diarization-3.1"),
@@ -275,8 +274,7 @@ class TranscribeApp(rumps.App):
     # ── Инициализация ──────────────────────────────────────────────────────────
 
     def _preload(self):
-        if not self._check_blackhole():    return
-        if not self._check_record_input(): return
+        if not self._check_screen_recording(): return
         os.makedirs(AUDIO_DIR, exist_ok=True)
         self._ensure_meeting_dir()
         self._ensure_note_dir()
@@ -304,26 +302,28 @@ class TranscribeApp(rumps.App):
                             self._queue.append(item)
                 threading.Thread(target=self._process_queue, daemon=True).start()
 
-    def _check_blackhole(self):
-        if any("BlackHole" in d["name"] for d in sd.query_devices()):
+    def _check_screen_recording(self):
+        from sck_audio import check_permission
+        self._ui(lambda: setattr(self.status_item, 'title', "Проверяю доступ к звуку..."))
+        if check_permission():
             return True
-        self._ui(lambda: setattr(self.status_item, 'title', "⚠️ BlackHole не установлен"))
+        self._ui(lambda: setattr(self.status_item, 'title', "⚠️ Нет доступа к системному звуку"))
         def show():
-            r = rumps.alert("BlackHole не установлен",
-                f"Скачайте BlackHole 2ch и перезапустите приложение:\n{BLACKHOLE_URL}",
-                ok="Открыть сайт", cancel="Закрыть")
-            if r: subprocess.Popen(["open", BLACKHOLE_URL])
-        self._ui(show); return False
-
-    def _check_record_input(self):
-        if any("RecordInput" in d["name"] for d in sd.query_devices()):
-            return True
-        self._ui(lambda: setattr(self.status_item, 'title', "⚠️ Нет устройства RecordInput"))
-        def show():
-            rumps.alert("Не найдено устройство RecordInput",
-                "Создайте Aggregate Device с именем «RecordInput» в Audio MIDI Setup.\n"
-                "Включите: ваш микрофон + BlackHole 2ch. Перезапустите приложение.")
-        self._ui(show); return False
+            r = rumps.alert(
+                "Нет доступа к системному звуку",
+                "Разрешите запись экрана:\n"
+                "Системные настройки → Конфиденциальность и безопасность → Запись экрана\n\n"
+                "Включите Govori-Zapishi, затем перезапустите приложение.",
+                ok="Открыть настройки", cancel="Закрыть",
+            )
+            if r:
+                subprocess.Popen([
+                    "open",
+                    "x-apple.systempreferences:"
+                    "com.apple.preference.security?Privacy_ScreenCapture",
+                ])
+        self._ui(show)
+        return False
 
     def _ensure_meeting_dir(self):
         cfg = load_config()
@@ -453,15 +453,79 @@ class TranscribeApp(rumps.App):
         self._timer.start()
         threading.Thread(target=self._record_loop, daemon=True).start()
 
+    def _resolve_mic_device(self):
+        """Возвращает device_id микрофона из конфига или None (системный дефолт)."""
+        mic_name = load_config().get("mic_device")
+        if not mic_name:
+            return None
+        for i, d in enumerate(sd.query_devices()):
+            if d["name"] == mic_name and d["max_input_channels"] > 0:
+                return i
+        return None  # имя устарело — используем дефолт
+
     def _record_loop(self):
-        devices    = sd.query_devices()
-        device_id  = next(i for i, d in enumerate(devices) if "RecordInput" in d["name"])
-        n_channels = int(sd.query_devices(device_id)["max_input_channels"])
+        from collections import deque
+        from sck_audio import SCKCapture
+
+        rec_type  = self.recording_type
+        device_id = self._resolve_mic_device()
+
+        # Количество каналов выбранного (или дефолтного) микрофона
+        if device_id is not None:
+            n_ch = int(sd.query_devices(device_id)["max_input_channels"])
+        else:
+            n_ch = int(sd.query_devices(kind="input")["max_input_channels"])
+        n_ch = max(1, n_ch)
+
+        # ── SCK: системный звук только для встреч ──────────────────────────
+        sck_buf  = deque()
+        sck_lock = threading.Lock()
+        sck      = None
+
+        if rec_type == "meeting":
+            def _on_sck_chunk(chunk):
+                # chunk: float32 (N, 2) → mono
+                mono = chunk.mean(axis=1) if chunk.ndim > 1 else chunk.flatten()
+                with sck_lock:
+                    sck_buf.extend(mono.tolist())
+
+            sck = SCKCapture()
+            try:
+                sck.start(_on_sck_chunk)
+            except RuntimeError as e:
+                print(f"[sck] warning: {e}", flush=True)
+                sck = None
+
+        # ── Микрофон + микширование ────────────────────────────────────────
         with sd.InputStream(device=device_id, samplerate=SAMPLE_RATE,
-                            channels=n_channels, dtype="float32") as stream:
+                            channels=n_ch, dtype="float32") as stream:
             while self.recording:
-                chunk, _ = stream.read(SAMPLE_RATE)
-                self.recorded.append(chunk)
+                mic_chunk, _ = stream.read(SAMPLE_RATE)
+                mic_mono = (mic_chunk.mean(axis=1)
+                            if mic_chunk.ndim > 1 else mic_chunk.flatten())
+
+                if sck is not None:
+                    n = len(mic_mono)
+                    with sck_lock:
+                        avail = len(sck_buf)
+                        if avail >= n:
+                            sck_arr = np.array(
+                                [sck_buf.popleft() for _ in range(n)], dtype=np.float32
+                            )
+                        elif avail > 0:
+                            sck_arr = np.array(list(sck_buf), dtype=np.float32)
+                            sck_buf.clear()
+                            sck_arr = np.pad(sck_arr, (0, n - len(sck_arr)))
+                        else:
+                            sck_arr = np.zeros(n, dtype=np.float32)
+                    mixed = np.clip((mic_mono + sck_arr) / 2, -1.0, 1.0)
+                else:
+                    mixed = mic_mono
+
+                self.recorded.append(mixed)
+
+        if sck:
+            sck.stop()
 
     def _tick_record(self, _):
         elapsed = int((datetime.datetime.now() - self._start_time).total_seconds())
@@ -478,14 +542,13 @@ class TranscribeApp(rumps.App):
         self.recording_type = None
         self._timer.stop()
 
-        audio      = np.concatenate(self.recorded)
+        audio      = np.concatenate(self.recorded)   # уже 1D float32 mono
         audio_secs = len(audio) / SAMPLE_RATE
-        audio_mono = audio.mean(axis=1) if rec_type == 'meeting' else audio[:, 0]
         timestamp  = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
         audio_path = os.path.join(AUDIO_DIR, f"{timestamp}.flac")
 
         try:
-            sf.write(audio_path, audio_mono, SAMPLE_RATE)
+            sf.write(audio_path, audio, SAMPLE_RATE)
         except Exception as e:
             err = str(e)
             def show_err():

@@ -135,20 +135,49 @@ class SettingsApp:
 
         ttk.Separator(outer).grid(row=7, column=0, columnspan=3, sticky="ew", pady=12)
 
+        # ── Микрофон ───────────────────────────────────────────────────────
+        ttk.Label(outer, text="🎙  Микрофон", font=("System", 13, "bold")).grid(
+            row=8, column=0, columnspan=3, sticky="w", pady=(0, 6))
+
+        import sounddevice as _sd
+        input_devs = [d["name"] for d in _sd.query_devices() if d["max_input_channels"] > 0]
+        mic_options = ["Системный по умолчанию"] + input_devs
+
+        saved_mic  = cfg.get("mic_device", "")
+        mic_init   = saved_mic if saved_mic in input_devs else "Системный по умолчанию"
+        mic_var    = tk.StringVar(value=mic_init)
+
+        def _save_mic(*_):
+            c = load_config()
+            val = mic_var.get()
+            if val == "Системный по умолчанию":
+                c.pop("mic_device", None)
+            else:
+                c["mic_device"] = val
+            save_config(c)
+
+        mic_var.trace_add("write", _save_mic)
+
+        mic_cb = ttk.Combobox(outer, textvariable=mic_var,
+                              values=mic_options, state="readonly",
+                              width=44)
+        mic_cb.grid(row=9, column=0, columnspan=3, sticky="ew", pady=(0, 0))
+
+        ttk.Separator(outer).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
+
         # ── Токен ─────────────────────────────────────────────────────────
         ttk.Label(outer, text="\U0001f511  HuggingFace токен", font=("System", 13, "bold")).grid(
-            row=8, column=0, columnspan=3, sticky="w", pady=(0, 4))
+            row=11, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
         info = ttk.Frame(outer)
-        info.grid(row=9, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+        info.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         ttk.Label(info, text="Зарегистрируйтесь и создайте Read-токен:", foreground="gray").pack(side="left")
         link_label(info, "Получить токен →", url=HF_TOKEN_URL).pack(side="right")
 
         self.token_var = tk.StringVar(value=token)
         token_entry = ttk.Entry(outer, textvariable=self.token_var, width=55)
-        token_entry.grid(row=10, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        token_entry.grid(row=13, column=0, columnspan=3, sticky="ew", pady=(0, 6))
         add_paste_menu(token_entry)
-        # На macOS Command = Meta в tkinter
         for key, event in [("v", "<<Paste>>"), ("c", "<<Copy>>"), ("x", "<<Cut>>")]:
             token_entry.bind(f"<Meta-{key}>", lambda e, ev=event: (
                 token_entry.event_generate(ev), "break")[1])
@@ -157,16 +186,16 @@ class SettingsApp:
         token_entry.focus_set()
 
         token_row = ttk.Frame(outer)
-        token_row.grid(row=11, column=0, columnspan=3, sticky="ew")
+        token_row.grid(row=14, column=0, columnspan=3, sticky="ew")
         btn(token_row, "Сохранить токен", self._save_token).pack(side="left")
         self.token_status = tk.StringVar(value="✅ Токен сохранён" if token else "")
         ttk.Label(token_row, textvariable=self.token_status).pack(side="left", padx=12)
 
-        ttk.Separator(outer).grid(row=12, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=15, column=0, columnspan=3, sticky="ew", pady=12)
 
         # ── Лицензии ──────────────────────────────────────────────────────
         ttk.Label(outer, text="\U0001f4cb  Лицензии моделей", font=("System", 13, "bold")).grid(
-            row=13, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            row=16, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         self.license_vars = []
         for i, (name, model) in enumerate(HF_LICENSES):
@@ -174,14 +203,14 @@ class SettingsApp:
             self.license_vars.append(var)
 
             ttk.Label(outer, textvariable=var, width=42, anchor="w").grid(
-                row=14 + i, column=0, columnspan=2, sticky="w", pady=2)
+                row=17 + i, column=0, columnspan=2, sticky="w", pady=2)
 
             url = f"https://huggingface.co/{model}"
             link_label(outer, "Открыть →", url=url).grid(
-                row=14 + i, column=2, sticky="e", pady=2)
+                row=17 + i, column=2, sticky="e", pady=2)
 
         lic_row = ttk.Frame(outer)
-        lic_row.grid(row=17, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        lic_row.grid(row=20, column=0, columnspan=3, sticky="w", pady=(8, 0))
         self.check_btn = btn(lic_row, "Проверить статус", self._check_licenses)
         self.check_btn.pack(side="left")
 
@@ -190,9 +219,9 @@ class SettingsApp:
                 var.set("\U0001f512  Введите токен для проверки")
             self.check_btn.state(["disabled"])
 
-        ttk.Separator(outer).grid(row=18, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=21, column=0, columnspan=3, sticky="ew", pady=12)
 
-        btn(outer, "Закрыть", self.root.destroy).grid(row=19, column=2, sticky="e")
+        btn(outer, "Закрыть", self.root.destroy).grid(row=22, column=2, sticky="e")
 
     # ── Папки ─────────────────────────────────────────────────────────────
 

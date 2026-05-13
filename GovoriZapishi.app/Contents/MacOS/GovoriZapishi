@@ -17,9 +17,10 @@ notify() {
 
 # ── Скрипты из бандла ─────────────────────────────────────────────────────────
 mkdir -p "$GZ_DIR"
-cp "$RESOURCES/menubar.py"       "$GZ_DIR/menubar.py"
+cp "$RESOURCES/menubar.py"         "$GZ_DIR/menubar.py"
 cp "$RESOURCES/settings_window.py" "$GZ_DIR/settings_window.py"
-cp "$RESOURCES/installer_ui.py"  "$GZ_DIR/installer_ui.py"
+cp "$RESOURCES/installer_ui.py"    "$GZ_DIR/installer_ui.py"
+cp "$RESOURCES/sck_audio.py"       "$GZ_DIR/sck_audio.py"
 
 # ── Homebrew ──────────────────────────────────────────────────────────────────
 if ! [ -x "$BREW" ]; then
@@ -41,11 +42,9 @@ PYTHON=$(find_python)
 
 # ── Brew-зависимости (тихо, без UI) ──────────────────────────────────────────
 NEEDS_BREW=false
-[ -z "$PYTHON" ]                                                            && NEEDS_BREW=true
-command -v ffmpeg &>/dev/null                                               || NEEDS_BREW=true
-[ -n "$PYTHON" ] && ! "$PYTHON" -c "import tkinter" 2>/dev/null            && NEEDS_BREW=true
-system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
-    || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]            || NEEDS_BREW=true
+[ -z "$PYTHON" ]                                               && NEEDS_BREW=true
+command -v ffmpeg &>/dev/null                                  || NEEDS_BREW=true
+[ -n "$PYTHON" ] && ! "$PYTHON" -c "import tkinter" 2>/dev/null && NEEDS_BREW=true
 
 if [ "$NEEDS_BREW" = true ]; then
     # Python (если нет — устанавливаем тихо, UI запустим после)
@@ -68,22 +67,27 @@ if [ "$NEEDS_BREW" = true ]; then
         fi
     fi
 
-    # ffmpeg и BlackHole — тихо
+    # ffmpeg
     command -v ffmpeg &>/dev/null || "$BREW" install ffmpeg >> "$LOG" 2>&1
-    { system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole" \
-        || [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; } \
-        || "$BREW" install --cask blackhole-2ch >> "$LOG" 2>&1
 fi
 
 # ── Python-пакеты ─────────────────────────────────────────────────────────────
-if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests, AppKit" 2>/dev/null; then
+if ! "$VENV_DIR/bin/python3" -c \
+    "import rumps, mlx_whisper, pyannote.audio, requests, AppKit, ScreenCaptureKit, CoreMedia" \
+    2>/dev/null; then
+
     # Запускаем окно прогресса
     rm -f "$PROGRESS"
     "$PYTHON" "$GZ_DIR/installer_ui.py" &
     UI_PID=$!
 
     # Устанавливаем пакеты по одному — обновляем прогресс
-    PACKAGES=(sounddevice soundfile numpy rumps requests mlx-whisper "pyannote.audio")
+    PACKAGES=(
+        sounddevice soundfile numpy rumps requests
+        mlx-whisper "pyannote.audio"
+        "pyobjc-framework-ScreenCaptureKit"
+        "pyobjc-framework-CoreMedia"
+    )
     TOTAL=${#PACKAGES[@]}
 
     "$PYTHON" -m venv --clear "$VENV_DIR" >> "$LOG" 2>&1
@@ -97,7 +101,9 @@ if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requ
     echo "done" > "$PROGRESS"
     wait "$UI_PID" 2>/dev/null
 
-    if ! "$VENV_DIR/bin/python3" -c "import rumps, mlx_whisper, pyannote.audio, requests" 2>/dev/null; then
+    if ! "$VENV_DIR/bin/python3" -c \
+        "import rumps, mlx_whisper, pyannote.audio, requests, ScreenCaptureKit" \
+        2>/dev/null; then
         notify "Ошибка" "Не удалось установить пакеты. См. /tmp/gz.log"
         exit 1
     fi
