@@ -285,10 +285,7 @@ class TranscribeApp(rumps.App):
         if not token: return
         self._load_whisper()
         if not self._load_pipeline(token): return
-        def _set_ready():
-            self.status_item.title = "Готово"
-            self.status_item.set_callback(None)
-        self._ui(_set_ready)
+        self._ui(lambda: setattr(self.status_item, 'title', "Готово"))
         self._ui(lambda: self.meeting_btn.set_callback(self._toggle_meeting))
         self._ui(lambda: self.note_btn.set_callback(self._toggle_note))
 
@@ -696,9 +693,8 @@ class TranscribeApp(rumps.App):
 
         basename = os.path.basename(md_path)
         subtitle  = "Встреча готова" if rec_type == 'meeting' else "Заметка готова"
-        def notify(p=md_path, b=basename):
+        def notify(b=basename):
             self.status_item.title = f"✓ {b}"
-            self.status_item.set_callback(lambda _: subprocess.Popen(["open", p]))
             rumps.notification(title="Govori-Zapishi", subtitle=subtitle, message=b)
             self._refresh_recordings_menu()
         self._ui(notify)
