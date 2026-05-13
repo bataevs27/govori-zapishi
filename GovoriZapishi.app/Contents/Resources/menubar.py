@@ -454,9 +454,11 @@ class TranscribeApp(rumps.App):
         threading.Thread(target=self._record_loop, daemon=True).start()
 
     def _record_loop(self):
-        devices   = sd.query_devices()
-        device_id = next(i for i, d in enumerate(devices) if "RecordInput" in d["name"])
-        with sd.InputStream(device=device_id, samplerate=SAMPLE_RATE, channels=3, dtype="float32") as stream:
+        devices    = sd.query_devices()
+        device_id  = next(i for i, d in enumerate(devices) if "RecordInput" in d["name"])
+        n_channels = int(sd.query_devices(device_id)["max_input_channels"])
+        with sd.InputStream(device=device_id, samplerate=SAMPLE_RATE,
+                            channels=n_channels, dtype="float32") as stream:
             while self.recording:
                 chunk, _ = stream.read(SAMPLE_RATE)
                 self.recorded.append(chunk)
