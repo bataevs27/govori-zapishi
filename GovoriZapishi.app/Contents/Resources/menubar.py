@@ -255,7 +255,7 @@ class TranscribeApp(rumps.App):
             except Exception:
                 dt = datetime.datetime.now()
             type_str = "встреча" if rec.get("type") == "meeting" else "заметка"
-            title = f"✗   {type_str} {dt.strftime('%d.%m %H:%M')}"
+            title = f"→   {type_str} {dt.strftime('%d.%m %H:%M')}"
             if self._processing:
                 mi = rumps.MenuItem(title, callback=lambda _: None)
                 mi._menuitem.setEnabled_(False)
