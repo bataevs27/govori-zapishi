@@ -336,11 +336,7 @@ class SettingsApp:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    SettingsApp(root)
-    root.update()  # окно полностью инициализировано и показано
-
-    # Прячем из дока только ПОСЛЕ того как tkinter всё настроил
+    # Прячем из дока ДО создания окна — иначе Dock успевает показать ракету
     try:
         import AppKit
         AppKit.NSApplication.sharedApplication().setActivationPolicy_(
@@ -348,4 +344,7 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    root = tk.Tk()
+    SettingsApp(root)
+    root.update()
     root.mainloop()
