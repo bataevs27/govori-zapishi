@@ -361,30 +361,40 @@ class TranscribeApp(rumps.App):
         except ImportError:
             pass
 
-        if avf_status == 3:   # Authorized — уже разрешено, тест не нужен
+        if avf_status == 3:   # Authorized
             cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
-        if avf_status == 2:   # Denied — явно запрещено
+        if avf_status == 2:   # Denied — явный отказ пользователя
             cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
             self._ui(lambda: setattr(self.status_item, 'title',
                 "⚠️ Нет доступа к микрофону — см. Настройки"))
             self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
             return False
 
-        # Шаг 2: sounddevice-тест — надёжно триггерит диалог macOS на любой версии
-        # Открываем короткий поток; macOS покажет диалог и заблокирует до ответа
+        # Шаг 2: sounddevice-тест — триггерит диалог macOS
+        # Если тест падает НЕ из-за permission — пропускаем и даём запуститься.
+        # Диалог появится при первой попытке записи.
+        _PERMISSION_ERRORS = ('-10814', 'not authorized', 'permission', 'denied',
+                              'unauthorized', 'inputdeviceunavailablewhileusinganother')
         try:
             with sd.InputStream(channels=1, samplerate=16000, dtype='float32') as stream:
-                stream.read(160)   # ~10 мс
+                stream.read(160)
             cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
         except Exception as e:
-            print(f"[mic_permission] test failed: {e}", flush=True)
-            cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
-            self._ui(lambda: setattr(self.status_item, 'title',
-                "⚠️ Нет доступа к микрофону — см. Настройки"))
-            self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
-            return False
+            err = str(e).lower()
+            print(f"[mic_permission] test: {e}", flush=True)
+            is_denied = any(k in err for k in _PERMISSION_ERRORS)
+            if is_denied:
+                cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
+                self._ui(lambda: setattr(self.status_item, 'title',
+                    "⚠️ Нет доступа к микрофону — см. Настройки"))
+                self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
+                return False
+            # Другая ошибка (нет устройства, и т.д.) — разрешаем запуск
+            print("[mic_permission] non-permission error, allowing startup", flush=True)
+            cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
+            return True
 
     def _restart_app(self, _):
         subprocess.Popen(["open", "-a", "GovoriZapishi"])
