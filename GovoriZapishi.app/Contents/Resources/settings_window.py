@@ -336,15 +336,19 @@ class SettingsApp:
 
 
 if __name__ == "__main__":
-    # Прячем из дока ДО создания окна — иначе Dock успевает показать ракету
-    try:
-        import AppKit
-        AppKit.NSApplication.sharedApplication().setActivationPolicy_(
-            AppKit.NSApplicationActivationPolicyAccessory)
-    except Exception:
-        pass
-
     root = tk.Tk()
     SettingsApp(root)
     root.update()
+
+    # Прячем из дока ПОСЛЕ того как tkinter инициализировал NSApplication
+    # (Tcl/Tk 9.0 требует свой NSApplication subclass, иначе crash на macOSVersion)
+    def _hide_dock():
+        try:
+            import AppKit
+            AppKit.NSApplication.sharedApplication().setActivationPolicy_(
+                AppKit.NSApplicationActivationPolicyAccessory)
+        except Exception:
+            pass
+    root.after(1, _hide_dock)
+
     root.mainloop()
