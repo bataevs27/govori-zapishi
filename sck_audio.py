@@ -120,22 +120,27 @@ def check_permission() -> bool:
     """
     try:
         import ScreenCaptureKit as _SCK
+        from Foundation import NSOperationQueue
     except ImportError:
         return False
 
     result = {}
     done   = threading.Event()
 
-    def handler(content, error):
-        result["ok"] = (
-            error is None
-            and content is not None
-            and len(content.displays()) > 0
-        )
-        done.set()
+    def do_request():
+        def handler(content, error):
+            result["ok"] = (
+                error is None
+                and content is not None
+                and len(content.displays()) > 0
+            )
+            done.set()
+        _SCK.SCShareableContent.getWithCompletionHandler_(handler)
 
-    _SCK.SCShareableContent.getWithCompletionHandler_(handler)
-    done.wait(timeout=5.0)
+    # SCK completion handler требует главный run loop —
+    # вызываем getWithCompletionHandler_ из главного потока
+    NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
+    done.wait(timeout=10.0)
     return result.get("ok", False)
 
 
@@ -153,16 +158,21 @@ class SCKCapture:
         self._err      = None
 
     def start(self, chunk_callback):
-        """Запускает захват. Блокирует до старта потока (≤5 сек)."""
+        """Запускает захват. Блокирует до старта потока (≤10 сек)."""
         self._callback = chunk_callback
         self._started.clear()
         self._err = None
         try:
             import ScreenCaptureKit as _SCK
+            from Foundation import NSOperationQueue
         except ImportError:
             raise RuntimeError("pyobjc-framework-ScreenCaptureKit не установлен")
-        _SCK.SCShareableContent.getWithCompletionHandler_(self._on_content)
-        self._started.wait(timeout=5.0)
+
+        def do_request():
+            _SCK.SCShareableContent.getWithCompletionHandler_(self._on_content)
+
+        NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
+        self._started.wait(timeout=10.0)
         if self._err:
             raise RuntimeError(self._err)
 
