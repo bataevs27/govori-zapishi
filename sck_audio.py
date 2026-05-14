@@ -135,7 +135,7 @@ def check_permission() -> bool:
                 and len(content.displays()) > 0
             )
             done.set()
-        _SCK.SCShareableContent.getWithCompletionHandler_(handler)
+        _SCK.SCShareableContent.getShareableContentWithCompletionHandler_(handler)
 
     # SCK completion handler требует главный run loop —
     # вызываем getWithCompletionHandler_ из главного потока
@@ -169,7 +169,7 @@ class SCKCapture:
             raise RuntimeError("pyobjc-framework-ScreenCaptureKit не установлен")
 
         def do_request():
-            _SCK.SCShareableContent.getWithCompletionHandler_(self._on_content)
+            _SCK.SCShareableContent.getShareableContentWithCompletionHandler_(self._on_content)
 
         NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
         self._started.wait(timeout=10.0)
