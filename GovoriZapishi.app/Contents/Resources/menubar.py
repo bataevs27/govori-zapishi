@@ -371,19 +371,23 @@ class TranscribeApp(rumps.App):
             self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
             return False
 
-        # Шаг 2: sounddevice-тест — триггерит диалог macOS
-        # Если тест падает НЕ из-за permission — пропускаем и даём запуститься.
-        # Диалог появится при первой попытке записи.
+        # Шаг 2: sounddevice-тест на нативной частоте устройства — триггерит диалог macOS
         _PERMISSION_ERRORS = ('-10814', 'not authorized', 'permission', 'denied',
                               'unauthorized', 'inputdeviceunavailablewhileusinganother')
         try:
-            with sd.InputStream(channels=1, samplerate=16000, dtype='float32') as stream:
-                stream.read(160)
+            dev_info = sd.query_devices(kind="input")
+            native_sr = int(dev_info.get("default_samplerate", 48000))
+            frames    = max(160, native_sr // 100)  # ~10 мс
+            with sd.InputStream(channels=1, samplerate=native_sr, dtype='float32') as stream:
+                data, _ = stream.read(frames)
+            # Проверяем что получили реальный сигнал (не тишину macOS при запрете)
+            rms = float(np.sqrt(np.mean(data ** 2)))
+            print(f"[mic_permission] test OK sr={native_sr} rms={rms:.5f}", flush=True)
             cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
         except Exception as e:
             err = str(e).lower()
-            print(f"[mic_permission] test: {e}", flush=True)
+            print(f"[mic_permission] test failed: {e}", flush=True)
             is_denied = any(k in err for k in _PERMISSION_ERRORS)
             if is_denied:
                 cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
@@ -391,7 +395,6 @@ class TranscribeApp(rumps.App):
                     "⚠️ Нет доступа к микрофону — см. Настройки"))
                 self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
                 return False
-            # Другая ошибка (нет устройства, и т.д.) — разрешаем запуск
             print("[mic_permission] non-permission error, allowing startup", flush=True)
             cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
@@ -644,6 +647,10 @@ class TranscribeApp(rumps.App):
                         sck_rms = float(np.sqrt(np.mean(sck_arr ** 2)))
                         print(f"[record] mic_rms={mic_rms:.5f} sck_rms={sck_rms:.5f} "
                               f"device={device_id}", flush=True)
+                        if len(self.recorded) == 15 and mic_rms < 1e-5:
+                            print("[record] WARNING: mic silent after 15s — "
+                                  "check microphone permission in System Settings",
+                                  flush=True)
                 else:
                     mixed = mic_mono
 
