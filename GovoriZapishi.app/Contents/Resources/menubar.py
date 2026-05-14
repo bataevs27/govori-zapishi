@@ -533,10 +533,22 @@ class TranscribeApp(rumps.App):
         mic_name = load_config().get("mic_device")
         if not mic_name:
             return None
-        for i, d in enumerate(sd.query_devices()):
-            if d["name"] == mic_name and d["max_input_channels"] > 0:
+        devices = [(i, d) for i, d in enumerate(sd.query_devices())
+                   if d["max_input_channels"] > 0]
+        # 1. Точное совпадение
+        for i, d in devices:
+            if d["name"] == mic_name:
                 return i
-        return None  # имя устарело — используем дефолт
+        # 2. Fuzzy: сохранённое имя содержится в названии устройства или наоборот
+        mic_lower = mic_name.lower()
+        for i, d in devices:
+            dev_lower = d["name"].lower()
+            if mic_lower in dev_lower or dev_lower in mic_lower:
+                print(f"[mic] fuzzy match: {mic_name!r} → {d['name']!r}", flush=True)
+                return i
+        # 3. Не найдено — используем системный дефолт
+        print(f"[mic] device {mic_name!r} not found, using default", flush=True)
+        return None
 
     def _record_loop(self):
         try:
