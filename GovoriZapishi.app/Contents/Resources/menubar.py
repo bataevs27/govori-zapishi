@@ -576,17 +576,15 @@ class TranscribeApp(rumps.App):
         device_id = self._resolve_mic_device()
         cfg_mic   = load_config().get("mic_device", "(дефолт)")
 
-        # Количество каналов выбранного (или дефолтного) микрофона
+        # Количество каналов и нативная частота устройства
         if device_id is not None:
             dev_info = sd.query_devices(device_id)
-            n_ch = int(dev_info["max_input_channels"])
         else:
             dev_info = sd.query_devices(kind="input")
-            n_ch = int(dev_info["max_input_channels"])
-        n_ch = max(1, n_ch)
+        n_ch    = max(1, int(dev_info["max_input_channels"]))
+        dev_sr  = int(dev_info["default_samplerate"])
         print(f"[record] cfg_mic={cfg_mic!r} → device={device_id} "
-              f"name={dev_info['name']!r} ch={n_ch} sr={int(dev_info['default_samplerate'])}",
-              flush=True)
+              f"name={dev_info['name']!r} ch={n_ch} sr={dev_sr}", flush=True)
 
         # ── SCK: системный звук только для встреч ──────────────────────────
         sck_buf  = deque()
@@ -608,12 +606,22 @@ class TranscribeApp(rumps.App):
                 sck = None
 
         # ── Микрофон + микширование ────────────────────────────────────────
-        with sd.InputStream(device=device_id, samplerate=SAMPLE_RATE,
+        # Открываем на нативной частоте устройства (AirPods HFP = 24kHz и т.д.)
+        # и ресемплируем до SAMPLE_RATE перед смешиванием
+        with sd.InputStream(device=device_id, samplerate=dev_sr,
                             channels=n_ch, dtype="float32") as stream:
             while self.recording:
-                mic_chunk, _ = stream.read(SAMPLE_RATE)
+                mic_chunk, _ = stream.read(dev_sr)  # 1 сек при нативной частоте
                 mic_mono = (mic_chunk.mean(axis=1)
                             if mic_chunk.ndim > 1 else mic_chunk.flatten())
+                # Ресемпл если нативная частота отличается от 48 kHz
+                if dev_sr != SAMPLE_RATE:
+                    target_len = SAMPLE_RATE  # ровно 1 сек при 48 kHz
+                    mic_mono = np.interp(
+                        np.linspace(0, len(mic_mono) - 1, target_len),
+                        np.arange(len(mic_mono)),
+                        mic_mono
+                    ).astype(np.float32)
 
                 if sck is not None:
                     n = len(mic_mono)
