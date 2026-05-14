@@ -95,6 +95,7 @@ class _AudioOutput(NSObject):
         self._callback = callback
         return self
 
+    @objc.typedSelector(b'v@:@@q')
     def stream_didOutputSampleBuffer_ofType_(self, stream, sampleBuffer, outputType):
         try:
             import ScreenCaptureKit as _SCK
@@ -140,7 +141,7 @@ def check_permission() -> bool:
     # SCK completion handler требует главный run loop —
     # вызываем getWithCompletionHandler_ из главного потока
     NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
-    done.wait(timeout=10.0)
+    done.wait(timeout=30.0)
     return result.get("ok", False)
 
 
@@ -172,7 +173,7 @@ class SCKCapture:
             _SCK.SCShareableContent.getShareableContentWithCompletionHandler_(self._on_content)
 
         NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
-        self._started.wait(timeout=10.0)
+        self._started.wait(timeout=30.0)
         if self._err:
             raise RuntimeError(self._err)
 

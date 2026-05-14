@@ -201,14 +201,17 @@ class TranscribeApp(rumps.App):
         self.settings_btn      = rumps.MenuItem("⚙️ Настройки",      callback=self._open_settings)
         self.quit_btn          = rumps.MenuItem("🚪 Выход",           callback=rumps.quit_application)
 
+        self.restart_btn       = rumps.MenuItem("🔄 Перезапустить приложение", callback=self._restart_app)
+
         self.meeting_btn.set_callback(None)
         self.note_btn.set_callback(None)
-        self.token_btn.hidden  = True
+        self.token_btn.hidden   = True
         self.process_btn.hidden = True
+        self.restart_btn.hidden = True
 
         self.menu = [
             self.status_item, self.recording_item, self.processing_item,
-            self.token_btn, None,
+            self.restart_btn, self.token_btn, None,
             self.meeting_btn, self.note_btn,
             self.process_btn, None,
             self.open_meetings_btn, self.open_notes_btn, None,
@@ -274,7 +277,9 @@ class TranscribeApp(rumps.App):
     # ── Инициализация ──────────────────────────────────────────────────────────
 
     def _preload(self):
-        if not self._check_screen_recording(): return
+        if not self._check_screen_recording():  return
+        if not self._check_microphone_permission(): return
+        self._ui(lambda: setattr(self.restart_btn, 'hidden', True))
         os.makedirs(AUDIO_DIR, exist_ok=True)
         self._ensure_meeting_dir()
         self._ensure_note_dir()
@@ -307,23 +312,47 @@ class TranscribeApp(rumps.App):
         self._ui(lambda: setattr(self.status_item, 'title', "Проверяю доступ к звуку..."))
         if check_permission():
             return True
-        self._ui(lambda: setattr(self.status_item, 'title', "⚠️ Нет доступа к системному звуку"))
-        def show():
-            r = rumps.alert(
-                "Нет доступа к системному звуку",
-                "Разрешите запись экрана:\n"
-                "Системные настройки → Конфиденциальность и безопасность → Запись экрана\n\n"
-                "Включите Govori-Zapishi, затем перезапустите приложение.",
-                ok="Открыть настройки", cancel="Закрыть",
+        # Разрешение не получено — показываем статус и подсказку
+        # (системный диалог macOS уже был показан — наш alert не нужен)
+        def show_hint():
+            self.status_item.title = (
+                "⚠️ Нет доступа к звуку — разрешите в Настройках"
             )
-            if r:
-                subprocess.Popen([
-                    "open",
-                    "x-apple.systempreferences:"
-                    "com.apple.preference.security?Privacy_ScreenCapture",
-                ])
-        self._ui(show)
+            self.restart_btn.hidden = False
+        self._ui(show_hint)
         return False
+
+    def _check_microphone_permission(self):
+        from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+        status = int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio))
+        if status == 3:   # AVAuthorizationStatusAuthorized
+            return True
+        if status == 2:   # AVAuthorizationStatusDenied
+            self._ui(lambda: setattr(self.status_item, 'title',
+                "⚠️ Нет доступа к микрофону — разрешите в Настройках"))
+            self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
+            return False
+        # NotDetermined (0) — запрашиваем, dispatching на main thread
+        result = {}
+        done   = threading.Event()
+        def do_request():
+            def handler(granted):
+                result['ok'] = bool(granted)
+                done.set()
+            AVCaptureDevice.requestAccessForMediaType_completionHandler_(
+                AVMediaTypeAudio, handler)
+        NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
+        done.wait(timeout=30.0)
+        if result.get('ok'):
+            return True
+        self._ui(lambda: setattr(self.status_item, 'title',
+            "⚠️ Нет доступа к микрофону — разрешите в Настройках"))
+        self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
+        return False
+
+    def _restart_app(self, _):
+        subprocess.Popen(["open", "-a", "GovoriZapishi"])
+        rumps.quit_application()
 
     def _ensure_meeting_dir(self):
         cfg = load_config()
@@ -464,6 +493,24 @@ class TranscribeApp(rumps.App):
         return None  # имя устарело — используем дефолт
 
     def _record_loop(self):
+        try:
+            self._record_loop_inner()
+        except Exception as e:
+            err = str(e)
+            print(f"[record_loop] error: {err}", flush=True)
+            def show_err():
+                self.recording = False
+                self.recording_item.hidden = True
+                self.status_item.hidden = False
+                self.meeting_btn.title = "🤝 Записать встречу"
+                self.note_btn.title    = "📝 Записать заметку"
+                self.meeting_btn.set_callback(self._toggle_meeting)
+                self.note_btn.set_callback(self._toggle_note)
+                self._update_app_title()
+                rumps.alert("Ошибка записи", err)
+            self._ui(show_err)
+
+    def _record_loop_inner(self):
         from collections import deque
         from sck_audio import SCKCapture
 

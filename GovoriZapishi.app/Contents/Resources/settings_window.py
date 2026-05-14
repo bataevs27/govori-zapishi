@@ -89,27 +89,76 @@ class SettingsApp:
             b = ttk.Button(parent, text=text, command=command, takefocus=0, **kw)
             return b
 
+        # ── Доступы ───────────────────────────────────────────────────────
+        ttk.Label(outer, text="🔐  Доступы", font=("System", 13, "bold")).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+
+        def _perm_status(ok):
+            return "✅  Доступен" if ok else "❌  Нет доступа"
+
+        def _check_sck():
+            try:
+                from sck_audio import check_permission
+                return check_permission()
+            except Exception:
+                return False
+
+        def _check_mic():
+            try:
+                from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+                return int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio)) == 3
+            except Exception:
+                return False
+
+        sck_ok = _check_sck()
+        mic_ok = _check_mic()
+
+        perm_frame = ttk.Frame(outer)
+        perm_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+
+        ttk.Label(perm_frame, text="Системный звук:", width=18).grid(row=0, column=0, sticky="w")
+        ttk.Label(perm_frame, text=_perm_status(sck_ok),
+                  foreground="#34C759" if sck_ok else "#FF3B30").grid(row=0, column=1, sticky="w")
+
+        ttk.Label(perm_frame, text="Микрофон:", width=18).grid(row=1, column=0, sticky="w", pady=(2,0))
+        ttk.Label(perm_frame, text=_perm_status(mic_ok),
+                  foreground="#34C759" if mic_ok else "#FF3B30").grid(row=1, column=1, sticky="w", pady=(2,0))
+
+        if not sck_ok or not mic_ok:
+            def _open_privacy():
+                import subprocess
+                url = ("x-apple.systempreferences:"
+                       "com.apple.preference.security?Privacy_ScreenCapture"
+                       if not sck_ok else
+                       "x-apple.systempreferences:"
+                       "com.apple.preference.security?Privacy_Microphone")
+                subprocess.Popen(["open", url])
+            btn(perm_frame, "Открыть настройки macOS", _open_privacy).grid(
+                row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        ttk.Separator(outer).grid(row=2, column=0, columnspan=3, sticky="ew", pady=12)
+
         # ── Папки ─────────────────────────────────────────────────────────
         ttk.Label(outer, text="📁  Папки", font=("System", 13, "bold")).grid(
-            row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            row=3, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         self.meeting_var = tk.StringVar(value=cfg.get("output_dir", "не выбрана"))
         self.note_var    = tk.StringVar(value=cfg.get("note_dir",   "не выбрана"))
 
         for r, label_text, var, command in [
-            (1, "Встречи:", self.meeting_var, self._change_meeting),
-            (2, "Заметки:", self.note_var,    self._change_note),
+            (4, "Встречи:", self.meeting_var, self._change_meeting),
+            (5, "Заметки:", self.note_var,    self._change_note),
         ]:
             ttk.Label(outer, text=label_text, width=9).grid(row=r, column=0, sticky="w", pady=3)
             ttk.Label(outer, textvariable=var, foreground="gray",
                       width=42, anchor="w").grid(row=r, column=1, sticky="w", padx=6)
             btn(outer, "Изменить", command).grid(row=r, column=2, sticky="e")
 
-        ttk.Separator(outer).grid(row=3, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=6, column=0, columnspan=3, sticky="ew", pady=12)
 
         # ── Обработка ─────────────────────────────────────────────────────────
         ttk.Label(outer, text="⚙️  Обработка", font=("System", 13, "bold")).grid(
-            row=4, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            row=7, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         auto_val  = tk.BooleanVar(value=cfg.get("auto_process", True))
         auto_desc = tk.StringVar()
@@ -129,15 +178,15 @@ class SettingsApp:
 
         ttk.Checkbutton(outer, text="Автоматическая обработка",
                         variable=auto_val, takefocus=0).grid(
-            row=5, column=0, columnspan=3, sticky="w")
+            row=8, column=0, columnspan=3, sticky="w")
         ttk.Label(outer, textvariable=auto_desc, foreground="gray").grid(
-            row=6, column=0, columnspan=3, sticky="w", pady=(2, 0))
+            row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
 
-        ttk.Separator(outer).grid(row=7, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
 
         # ── Микрофон ───────────────────────────────────────────────────────
         ttk.Label(outer, text="🎙  Микрофон", font=("System", 13, "bold")).grid(
-            row=8, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            row=11, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         import sounddevice as _sd
         input_devs = [d["name"] for d in _sd.query_devices() if d["max_input_channels"] > 0]
@@ -161,22 +210,22 @@ class SettingsApp:
         mic_cb = ttk.Combobox(outer, textvariable=mic_var,
                               values=mic_options, state="readonly",
                               width=44)
-        mic_cb.grid(row=9, column=0, columnspan=3, sticky="ew", pady=(0, 0))
+        mic_cb.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(0, 0))
 
-        ttk.Separator(outer).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=13, column=0, columnspan=3, sticky="ew", pady=12)
 
         # ── Токен ─────────────────────────────────────────────────────────
         ttk.Label(outer, text="\U0001f511  HuggingFace токен", font=("System", 13, "bold")).grid(
-            row=11, column=0, columnspan=3, sticky="w", pady=(0, 4))
+            row=14, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
         info = ttk.Frame(outer)
-        info.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+        info.grid(row=15, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         ttk.Label(info, text="Зарегистрируйтесь и создайте Read-токен:", foreground="gray").pack(side="left")
         link_label(info, "Получить токен →", url=HF_TOKEN_URL).pack(side="right")
 
         self.token_var = tk.StringVar(value=token)
         token_entry = ttk.Entry(outer, textvariable=self.token_var, width=55)
-        token_entry.grid(row=13, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        token_entry.grid(row=16, column=0, columnspan=3, sticky="ew", pady=(0, 6))
         add_paste_menu(token_entry)
         for key, event in [("v", "<<Paste>>"), ("c", "<<Copy>>"), ("x", "<<Cut>>")]:
             token_entry.bind(f"<Meta-{key}>", lambda e, ev=event: (
@@ -186,16 +235,16 @@ class SettingsApp:
         token_entry.focus_set()
 
         token_row = ttk.Frame(outer)
-        token_row.grid(row=14, column=0, columnspan=3, sticky="ew")
+        token_row.grid(row=17, column=0, columnspan=3, sticky="ew")
         btn(token_row, "Сохранить токен", self._save_token).pack(side="left")
         self.token_status = tk.StringVar(value="✅ Токен сохранён" if token else "")
         ttk.Label(token_row, textvariable=self.token_status).pack(side="left", padx=12)
 
-        ttk.Separator(outer).grid(row=15, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=18, column=0, columnspan=3, sticky="ew", pady=12)
 
         # ── Лицензии ──────────────────────────────────────────────────────
         ttk.Label(outer, text="\U0001f4cb  Лицензии моделей", font=("System", 13, "bold")).grid(
-            row=16, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            row=19, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         self.license_vars = []
         for i, (name, model) in enumerate(HF_LICENSES):
@@ -203,14 +252,14 @@ class SettingsApp:
             self.license_vars.append(var)
 
             ttk.Label(outer, textvariable=var, width=42, anchor="w").grid(
-                row=17 + i, column=0, columnspan=2, sticky="w", pady=2)
+                row=20 + i, column=0, columnspan=2, sticky="w", pady=2)
 
             url = f"https://huggingface.co/{model}"
             link_label(outer, "Открыть →", url=url).grid(
-                row=17 + i, column=2, sticky="e", pady=2)
+                row=20 + i, column=2, sticky="e", pady=2)
 
         lic_row = ttk.Frame(outer)
-        lic_row.grid(row=20, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        lic_row.grid(row=23, column=0, columnspan=3, sticky="w", pady=(8, 0))
         self.check_btn = btn(lic_row, "Проверить статус", self._check_licenses)
         self.check_btn.pack(side="left")
 
@@ -219,9 +268,9 @@ class SettingsApp:
                 var.set("\U0001f512  Введите токен для проверки")
             self.check_btn.state(["disabled"])
 
-        ttk.Separator(outer).grid(row=21, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Separator(outer).grid(row=24, column=0, columnspan=3, sticky="ew", pady=12)
 
-        btn(outer, "Закрыть", self.root.destroy).grid(row=22, column=2, sticky="e")
+        btn(outer, "Закрыть", self.root.destroy).grid(row=25, column=2, sticky="e")
 
     # ── Папки ─────────────────────────────────────────────────────────────
 
