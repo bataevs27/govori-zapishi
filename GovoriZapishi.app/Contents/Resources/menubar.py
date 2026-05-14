@@ -353,42 +353,38 @@ class TranscribeApp(rumps.App):
         return False
 
     def _check_microphone_permission(self):
+        # Шаг 1: AVFoundation — проверяем текущий статус (не вызывает диалог)
+        avf_status = None
         try:
             from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+            avf_status = int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio))
         except ImportError:
-            # AVFoundation не установлен — пропускаем проверку
-            cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
-            return True
+            pass
 
-        status = int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio))
-        if status == 3:   # Authorized
+        if avf_status == 3:   # Authorized — уже разрешено, тест не нужен
             cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
-        if status == 2:   # Denied
+        if avf_status == 2:   # Denied — явно запрещено
             cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
             self._ui(lambda: setattr(self.status_item, 'title',
                 "⚠️ Нет доступа к микрофону — см. Настройки"))
             self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
             return False
-        # NotDetermined — запрашиваем с main thread
-        result = {}
-        done   = threading.Event()
-        def do_request():
-            def handler(granted):
-                result['ok'] = bool(granted)
-                done.set()
-            AVCaptureDevice.requestAccessForMediaType_completionHandler_(
-                AVMediaTypeAudio, handler)
-        NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
-        done.wait(timeout=30.0)
-        ok = result.get('ok', False)
-        cfg = load_config(); cfg["perm_mic"] = ok; save_config(cfg)
-        if ok:
+
+        # Шаг 2: sounddevice-тест — надёжно триггерит диалог macOS на любой версии
+        # Открываем короткий поток; macOS покажет диалог и заблокирует до ответа
+        try:
+            with sd.InputStream(channels=1, samplerate=16000, dtype='float32') as stream:
+                stream.read(160)   # ~10 мс
+            cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
-        self._ui(lambda: setattr(self.status_item, 'title',
-            "⚠️ Нет доступа к микрофону — см. Настройки"))
-        self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
-        return False
+        except Exception as e:
+            print(f"[mic_permission] test failed: {e}", flush=True)
+            cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
+            self._ui(lambda: setattr(self.status_item, 'title',
+                "⚠️ Нет доступа к микрофону — см. Настройки"))
+            self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
+            return False
 
     def _restart_app(self, _):
         subprocess.Popen(["open", "-a", "GovoriZapishi"])
