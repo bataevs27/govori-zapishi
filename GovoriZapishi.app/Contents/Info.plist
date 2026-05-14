@@ -17,7 +17,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>2.0</string>
 	<key>LSUIElement</key>
-	<true/>
+	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Govori-Zapishi записывает ваш голос для транскрипции встреч и заметок.</string>
 	<key>NSScreenRecordingUsageDescription</key>

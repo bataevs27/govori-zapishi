@@ -160,6 +160,22 @@ def open_settings_window():
 class TranscribeApp(rumps.App):
     def __init__(self):
         super().__init__("⏺", quit_button=None)
+        # Явно задаём иконку — Python не наследует AppIcon из .app бандла автоматически
+        try:
+            icon_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "GovoriZapishi.app", "Contents", "Resources", "AppIcon.icns"
+            )
+            if not os.path.exists(icon_path):
+                icon_path = os.path.expanduser(
+                    "~/govori-zapishi/GovoriZapishi.app/Contents/Resources/AppIcon.icns"
+                )
+            if os.path.exists(icon_path):
+                img = AppKit.NSImage.alloc().initWithContentsOfFile_(icon_path)
+                if img:
+                    AppKit.NSApplication.sharedApplication().setApplicationIconImage_(img)
+        except Exception:
+            pass
         self.recording = False
         self.recording_type = None
         self.recorded = []
@@ -769,9 +785,11 @@ class TranscribeApp(rumps.App):
             except Exception:
                 pass
 
-            # pyannote 4.x возвращает DiarizeOutput, 3.x — Annotation напрямую
+            # pyannote 4.x возвращает DiarizeOutput (dataclass), 3.x — Annotation напрямую
             if not hasattr(diarization, 'itertracks'):
-                if hasattr(diarization, 'diarization'):
+                if hasattr(diarization, 'speaker_diarization'):
+                    diarization = diarization.speaker_diarization
+                elif hasattr(diarization, 'diarization'):
                     diarization = diarization.diarization
                 elif isinstance(diarization, dict):
                     diarization = next(iter(diarization.values()))
