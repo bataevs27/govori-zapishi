@@ -612,6 +612,12 @@ class TranscribeApp(rumps.App):
                         else:
                             sck_arr = np.zeros(n, dtype=np.float32)
                     mixed = np.clip(_mix_normalize(mic_mono, sck_arr), -1.0, 1.0)
+                    # Диагностика каждые ~5 сек
+                    if len(self.recorded) % 5 == 0:
+                        mic_rms = float(np.sqrt(np.mean(mic_mono ** 2)))
+                        sck_rms = float(np.sqrt(np.mean(sck_arr ** 2)))
+                        print(f"[record] mic_rms={mic_rms:.5f} sck_rms={sck_rms:.5f} "
+                              f"device={device_id}", flush=True)
                 else:
                     mixed = mic_mono
 
