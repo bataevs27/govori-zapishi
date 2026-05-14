@@ -700,18 +700,22 @@ class TranscribeApp(rumps.App):
     def _process_queue(self):
         self._processing = True
         self._ui(self._refresh_recordings_menu)
-        while True:
-            with self._queue_lock:
-                if not self._queue: break
-                item = self._queue.pop(0)
-            self._process_item(item)
-        self._processing = False
-        def finish_all():
-            self.processing_item.hidden = True
-            self.status_item.hidden = False
-            self._refresh_recordings_menu()
-            self._update_app_title()
-        self._ui(finish_all)
+        try:
+            while True:
+                with self._queue_lock:
+                    if not self._queue: break
+                    item = self._queue.pop(0)
+                self._process_item(item)
+        except Exception as e:
+            print(f"[process_queue] unexpected error: {e}", flush=True)
+        finally:
+            self._processing = False
+            def finish_all():
+                self.processing_item.hidden = True
+                self.status_item.hidden = False
+                self._refresh_recordings_menu()
+                self._update_app_title()
+            self._ui(finish_all)
 
     def _process_item(self, item):
         rec_type   = item["type"]
@@ -764,6 +768,13 @@ class TranscribeApp(rumps.App):
                 torch.mps.empty_cache()
             except Exception:
                 pass
+
+            # pyannote 4.x возвращает DiarizeOutput, 3.x — Annotation напрямую
+            if not hasattr(diarization, 'itertracks'):
+                if hasattr(diarization, 'diarization'):
+                    diarization = diarization.diarization
+                elif isinstance(diarization, dict):
+                    diarization = next(iter(diarization.values()))
 
             all_turns = [(t, sp) for t, _, sp in diarization.itertracks(yield_label=True)]
             def get_speaker(start, end):
