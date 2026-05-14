@@ -96,35 +96,31 @@ class SettingsApp:
         def _perm_status(ok):
             return "✅  Доступен" if ok else "❌  Нет доступа"
 
-        def _check_sck():
-            try:
-                from sck_audio import check_permission
-                return check_permission()
-            except Exception:
-                return False
-
-        def _check_mic():
-            try:
-                from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
-                return int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio)) == 3
-            except Exception:
-                return False
-
-        sck_ok = _check_sck()
-        mic_ok = _check_mic()
+        # Статусы разрешений — читаем из конфига (записывается основным процессом при старте)
+        # None = ещё не проверялось
+        sck_ok = cfg.get("perm_sck")
+        mic_ok = cfg.get("perm_mic")
 
         perm_frame = ttk.Frame(outer)
         perm_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 4))
 
+        def _perm_color(ok):
+            if ok is None: return "gray"
+            return "#34C759" if ok else "#FF3B30"
+
+        def _perm_label(ok):
+            if ok is None: return "—  Запустите приложение для проверки"
+            return _perm_status(ok)
+
         ttk.Label(perm_frame, text="Системный звук:", width=18).grid(row=0, column=0, sticky="w")
-        ttk.Label(perm_frame, text=_perm_status(sck_ok),
-                  foreground="#34C759" if sck_ok else "#FF3B30").grid(row=0, column=1, sticky="w")
+        ttk.Label(perm_frame, text=_perm_label(sck_ok),
+                  foreground=_perm_color(sck_ok)).grid(row=0, column=1, sticky="w")
 
         ttk.Label(perm_frame, text="Микрофон:", width=18).grid(row=1, column=0, sticky="w", pady=(2,0))
-        ttk.Label(perm_frame, text=_perm_status(mic_ok),
-                  foreground="#34C759" if mic_ok else "#FF3B30").grid(row=1, column=1, sticky="w", pady=(2,0))
+        ttk.Label(perm_frame, text=_perm_label(mic_ok),
+                  foreground=_perm_color(mic_ok)).grid(row=1, column=1, sticky="w", pady=(2,0))
 
-        if not sck_ok or not mic_ok:
+        if sck_ok is False or mic_ok is False:
             def _open_privacy():
                 import subprocess
                 url = ("x-apple.systempreferences:"

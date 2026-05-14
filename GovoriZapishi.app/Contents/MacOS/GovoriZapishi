@@ -73,7 +73,7 @@ fi
 
 # ── Python-пакеты ─────────────────────────────────────────────────────────────
 if ! "$VENV_DIR/bin/python3" -c \
-    "import rumps, mlx_whisper, pyannote.audio, requests, AppKit, ScreenCaptureKit, CoreMedia" \
+    "import rumps, mlx_whisper, pyannote.audio, requests, AppKit, ScreenCaptureKit, CoreMedia, AVFoundation" \
     2>/dev/null; then
 
     # Запускаем окно прогресса
@@ -87,6 +87,7 @@ if ! "$VENV_DIR/bin/python3" -c \
         mlx-whisper "pyannote.audio"
         "pyobjc-framework-ScreenCaptureKit"
         "pyobjc-framework-CoreMedia"
+        "pyobjc-framework-AVFoundation"
     )
     TOTAL=${#PACKAGES[@]}
 
@@ -102,7 +103,7 @@ if ! "$VENV_DIR/bin/python3" -c \
     wait "$UI_PID" 2>/dev/null
 
     if ! "$VENV_DIR/bin/python3" -c \
-        "import rumps, mlx_whisper, pyannote.audio, requests, ScreenCaptureKit" \
+        "import rumps, mlx_whisper, pyannote.audio, requests, ScreenCaptureKit, AVFoundation" \
         2>/dev/null; then
         notify "Ошибка" "Не удалось установить пакеты. См. /tmp/gz.log"
         exit 1

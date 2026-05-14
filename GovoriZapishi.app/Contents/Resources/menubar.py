@@ -310,29 +310,36 @@ class TranscribeApp(rumps.App):
     def _check_screen_recording(self):
         from sck_audio import check_permission
         self._ui(lambda: setattr(self.status_item, 'title', "Проверяю доступ к звуку..."))
-        if check_permission():
+        ok = check_permission()
+        # Сохраняем статус для settings_window
+        cfg = load_config(); cfg["perm_sck"] = ok; save_config(cfg)
+        if ok:
             return True
-        # Разрешение не получено — показываем статус и подсказку
-        # (системный диалог macOS уже был показан — наш alert не нужен)
         def show_hint():
-            self.status_item.title = (
-                "⚠️ Нет доступа к звуку — разрешите в Настройках"
-            )
+            self.status_item.title = "⚠️ Нет доступа к звуку — см. Настройки"
             self.restart_btn.hidden = False
         self._ui(show_hint)
         return False
 
     def _check_microphone_permission(self):
-        from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
-        status = int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio))
-        if status == 3:   # AVAuthorizationStatusAuthorized
+        try:
+            from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+        except ImportError:
+            # AVFoundation не установлен — пропускаем проверку
+            cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
             return True
-        if status == 2:   # AVAuthorizationStatusDenied
+
+        status = int(AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio))
+        if status == 3:   # Authorized
+            cfg = load_config(); cfg["perm_mic"] = True; save_config(cfg)
+            return True
+        if status == 2:   # Denied
+            cfg = load_config(); cfg["perm_mic"] = False; save_config(cfg)
             self._ui(lambda: setattr(self.status_item, 'title',
-                "⚠️ Нет доступа к микрофону — разрешите в Настройках"))
+                "⚠️ Нет доступа к микрофону — см. Настройки"))
             self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
             return False
-        # NotDetermined (0) — запрашиваем, dispatching на main thread
+        # NotDetermined — запрашиваем с main thread
         result = {}
         done   = threading.Event()
         def do_request():
@@ -343,10 +350,12 @@ class TranscribeApp(rumps.App):
                 AVMediaTypeAudio, handler)
         NSOperationQueue.mainQueue().addOperationWithBlock_(do_request)
         done.wait(timeout=30.0)
-        if result.get('ok'):
+        ok = result.get('ok', False)
+        cfg = load_config(); cfg["perm_mic"] = ok; save_config(cfg)
+        if ok:
             return True
         self._ui(lambda: setattr(self.status_item, 'title',
-            "⚠️ Нет доступа к микрофону — разрешите в Настройках"))
+            "⚠️ Нет доступа к микрофону — см. Настройки"))
         self._ui(lambda: setattr(self.restart_btn, 'hidden', False))
         return False
 

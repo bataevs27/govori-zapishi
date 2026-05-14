@@ -10,9 +10,17 @@
 	<string>com.local.govorizapishi</string>
 	<key>CFBundleName</key>
 	<string>GovoriZapishi</string>
+	<key>CFBundleDisplayName</key>
+	<string>Govori-Zapishi</string>
 	<key>CFBundleVersion</key>
-	<string>1.0</string>
+	<string>2.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.0</string>
 	<key>LSUIElement</key>
-	<false/>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Govori-Zapishi записывает ваш голос для транскрипции встреч и заметок.</string>
+	<key>NSScreenRecordingUsageDescription</key>
+	<string>Govori-Zapishi захватывает системный звук созвона для транскрипции встречи.</string>
 </dict>
 </plist>
