@@ -562,13 +562,19 @@ class TranscribeApp(rumps.App):
 
         rec_type  = self.recording_type
         device_id = self._resolve_mic_device()
+        cfg_mic   = load_config().get("mic_device", "(дефолт)")
 
         # Количество каналов выбранного (или дефолтного) микрофона
         if device_id is not None:
-            n_ch = int(sd.query_devices(device_id)["max_input_channels"])
+            dev_info = sd.query_devices(device_id)
+            n_ch = int(dev_info["max_input_channels"])
         else:
-            n_ch = int(sd.query_devices(kind="input")["max_input_channels"])
+            dev_info = sd.query_devices(kind="input")
+            n_ch = int(dev_info["max_input_channels"])
         n_ch = max(1, n_ch)
+        print(f"[record] cfg_mic={cfg_mic!r} → device={device_id} "
+              f"name={dev_info['name']!r} ch={n_ch} sr={int(dev_info['default_samplerate'])}",
+              flush=True)
 
         # ── SCK: системный звук только для встреч ──────────────────────────
         sck_buf  = deque()
