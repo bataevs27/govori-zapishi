@@ -149,6 +149,21 @@ def cleanup_old_audio():
             os.remove(audio_path)
 
 
+def _normalize_stream(audio: np.ndarray, target_rms: float = 0.08) -> np.ndarray:
+    """Нормализует поток к target_rms. Тишину (rms < 1e-4) не трогает."""
+    rms = np.sqrt(np.mean(audio ** 2))
+    if rms < 1e-4:
+        return audio
+    return audio * (target_rms / rms)
+
+def _mix_normalize(mic: np.ndarray, sck: np.ndarray) -> np.ndarray:
+    """Нормализует mic и sck к одинаковому уровню, затем смешивает."""
+    has_sck = np.sqrt(np.mean(sck ** 2)) > 1e-4
+    if has_sck:
+        return (_normalize_stream(mic) + _normalize_stream(sck)) / 2
+    return mic  # нет системного звука — только микрофон без изменений
+
+
 def open_settings_window():
     import sys
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings_window.py")
@@ -590,7 +605,7 @@ class TranscribeApp(rumps.App):
                             sck_arr = np.pad(sck_arr, (0, n - len(sck_arr)))
                         else:
                             sck_arr = np.zeros(n, dtype=np.float32)
-                    mixed = np.clip((mic_mono + sck_arr) / 2, -1.0, 1.0)
+                    mixed = np.clip(_mix_normalize(mic_mono, sck_arr), -1.0, 1.0)
                 else:
                     mixed = mic_mono
 
