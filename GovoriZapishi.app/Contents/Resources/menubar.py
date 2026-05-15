@@ -74,12 +74,13 @@ def save_stats(rec_type, audio_secs, processing_secs):
         json.dump(stats, f)
 
 def estimate_processing_secs(rec_type, audio_secs):
+    """Оценка времени обработки — только по истории того же типа (note/meeting).
+    Смешивать нельзя: заметки в разы быстрее встреч из-за отсутствия диаризации."""
     stats = load_stats()
-    history = [e for e in stats["history"] if e.get("type") == rec_type and e["audio_secs"] > 0]
+    history = [e for e in stats["history"]
+               if e.get("type") == rec_type and e["audio_secs"] > 0]
     if not history:
-        history = [e for e in stats["history"] if e["audio_secs"] > 0]
-    if not history:
-        return None
+        return None  # нет истории для этого типа — показываем секундомер
     ratios = [e["processing_secs"] / e["audio_secs"] for e in history]
     return audio_secs * (sum(ratios) / len(ratios))
 
