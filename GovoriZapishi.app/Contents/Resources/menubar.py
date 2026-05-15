@@ -75,14 +75,31 @@ def save_stats(rec_type, audio_secs, processing_secs):
 
 def estimate_processing_secs(rec_type, audio_secs):
     """Оценка времени обработки — только по истории того же типа (note/meeting).
-    Смешивать нельзя: заметки в разы быстрее встреч из-за отсутствия диаризации."""
+
+    Алгоритм: экспоненциальное взвешивание (последние записи важнее) + буфер 15%.
+    Адаптируется по мере накопления истории. Не смешивает типы — заметки
+    обрабатываются в разы быстрее встреч из-за отсутствия диаризации.
+    """
     stats = load_stats()
     history = [e for e in stats["history"]
                if e.get("type") == rec_type and e["audio_secs"] > 0]
     if not history:
         return None  # нет истории для этого типа — показываем секундомер
+
     ratios = [e["processing_secs"] / e["audio_secs"] for e in history]
-    return audio_secs * (sum(ratios) / len(ratios))
+    n = len(ratios)
+
+    if n == 1:
+        avg_ratio = ratios[0]
+    else:
+        # Экспоненциальные веса: последняя запись в ~3x важнее первой при n=5
+        decay = 0.80
+        weights = [decay ** (n - 1 - i) for i in range(n)]
+        total_w = sum(weights)
+        avg_ratio = sum(r * w for r, w in zip(ratios, weights)) / total_w
+
+    # +15% буфер: таймер не обнуляется раньше реального завершения
+    return audio_secs * avg_ratio * 1.15
 
 
 # ── Токен ──────────────────────────────────────────────────────────────────────
