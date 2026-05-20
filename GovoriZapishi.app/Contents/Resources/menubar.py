@@ -787,6 +787,17 @@ class TranscribeApp(rumps.App):
 
     # ── Обработка ──────────────────────────────────────────────────────────────
 
+    def _end_proc_activity(self):
+        """Снимаем запрет сна если был установлен."""
+        act = getattr(self, '_proc_activity', None)
+        if act:
+            try:
+                from Foundation import NSProcessInfo
+                NSProcessInfo.processInfo().endActivity_(act)
+            except Exception:
+                pass
+            self._proc_activity = None
+
     def _process_queue(self):
         self._processing = True
         self._ui(self._refresh_recordings_menu)
@@ -799,6 +810,7 @@ class TranscribeApp(rumps.App):
         except Exception as e:
             print(f"[process_queue] unexpected error: {e}", flush=True)
         finally:
+            self._end_proc_activity()  # на случай ошибки в process_item
             self._processing = False
             def finish_all():
                 self.processing_item.hidden = True
@@ -818,6 +830,18 @@ class TranscribeApp(rumps.App):
 
         self._proc_start    = datetime.datetime.now()
         self._proc_estimate = estimate_processing_secs(rec_type, audio_secs)
+
+        # Запрещаем сон Mac на время обработки — иначе MPS-контекст рвётся
+        try:
+            from Foundation import NSProcessInfo
+            _NSActivityLatencyCritical = 0xFF00000000
+            _NSActivityUserInitiated   = 0x00FFFFFF
+            self._proc_activity = NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
+                _NSActivityLatencyCritical | _NSActivityUserInitiated,
+                "GovoriZapishi: transcription processing"
+            )
+        except Exception:
+            self._proc_activity = None
 
         def start_timer():
             if self._proc_timer: self._proc_timer.stop()
@@ -910,6 +934,9 @@ class TranscribeApp(rumps.App):
                 self._update_app_title()
                 rumps.alert("Не удалось сохранить файл", err)
             self._ui(show_err); return
+
+        # Разрешаем сон обратно
+        self._end_proc_activity()
 
         mark_done_in_queue(timestamp)
         self._session_done.append(timestamp)
