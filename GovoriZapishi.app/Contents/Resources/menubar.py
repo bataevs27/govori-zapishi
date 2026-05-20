@@ -167,19 +167,15 @@ def cleanup_old_audio():
             os.remove(audio_path)
 
 
-def _normalize_stream(audio: np.ndarray, target_rms: float = 0.08) -> np.ndarray:
-    """Нормализует поток к target_rms. Тишину (rms < 1e-4) не трогает."""
-    rms = np.sqrt(np.mean(audio ** 2))
-    if rms < 1e-4:
-        return audio
-    return audio * (target_rms / rms)
-
-def _mix_normalize(mic: np.ndarray, sck: np.ndarray) -> np.ndarray:
-    """Нормализует mic и sck к одинаковому уровню, затем смешивает."""
-    has_sck = np.sqrt(np.mean(sck ** 2)) > 1e-4
+def _mix_streams(mic: np.ndarray, sck: np.ndarray,
+                 sck_boost: float = 1.5) -> np.ndarray:
+    """Смешивает mic и sck с фиксированным усилением SCK.
+    sck_boost=1.5 компенсирует то, что системный звук обычно тише микрофона.
+    Деление на 2 предотвращает клиппинг суммы двух сигналов."""
+    has_sck = np.sqrt(np.mean(sck ** 2)) > 1e-5
     if has_sck:
-        return (_normalize_stream(mic) + _normalize_stream(sck)) / 2
-    return mic  # нет системного звука — только микрофон без изменений
+        return np.clip((mic + sck * sck_boost) / 2, -1.0, 1.0)
+    return mic
 
 
 def open_settings_window():
@@ -658,7 +654,7 @@ class TranscribeApp(rumps.App):
                             sck_arr = np.pad(sck_arr, (0, n - len(sck_arr)))
                         else:
                             sck_arr = np.zeros(n, dtype=np.float32)
-                    mixed = np.clip(_mix_normalize(mic_mono, sck_arr), -1.0, 1.0)
+                    mixed = _mix_streams(mic_mono, sck_arr)
                     # Диагностика каждые ~5 сек
                     if len(self.recorded) % 5 == 0:
                         mic_rms = float(np.sqrt(np.mean(mic_mono ** 2)))
