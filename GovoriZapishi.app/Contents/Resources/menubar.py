@@ -486,19 +486,36 @@ class TranscribeApp(rumps.App):
         from pyannote.audio import Pipeline
         self._ui(lambda: setattr(self.status_item, 'title', "Загружаю модель диаризации..."))
 
-        # Автоматическое управление памятью для ≤8 ГБ
+        # Определяем объём RAM: на ≤8 ГБ включаем экономию памяти
         try:
             total_ram = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"]).strip())
-            if total_ram <= 8 * 1024 ** 3:
+        except Exception:
+            total_ram = 16 * 1024 ** 3  # безопасный дефолт
+        self._low_ram = total_ram <= 8 * 1024 ** 3
+
+        if self._low_ram:
+            try:
                 import mlx.core
                 mlx.core.metal.set_cache_limit(1 * 1024 ** 3)
                 print(f"[memory] {total_ram // 1024**3}GB RAM — MLX cache capped at 1GB", flush=True)
-        except Exception:
-            pass
+            except Exception:
+                pass
 
         try:
             self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=token)
             self.pipeline.to(torch.device("mps"))
+
+            # Батчинг сегментации и эмбеддингов — дефолт pyannote = 1 (чанки по одному
+            # через GPU, ужасная утилизация MPS). Батч ускоряет без потери точности.
+            # На ≤8 ГБ берём меньше чтобы не переполнить unified memory.
+            batch = 8 if self._low_ram else 32
+            try:
+                self.pipeline.segmentation_batch_size = batch
+                self.pipeline.embedding_batch_size = batch
+                print(f"[perf] pyannote batch_size set to {batch}", flush=True)
+            except Exception as be:
+                print(f"[perf] could not set batch_size: {be}", flush=True)
+
             return True
         except Exception as e:
             err = str(e)
@@ -876,12 +893,15 @@ class TranscribeApp(rumps.App):
                     rumps.alert("Ошибка диаризации", err)
                 self._ui(show_err); return
 
-            # Освобождаем GPU-память после диаризации
-            try:
-                import torch
-                torch.mps.empty_cache()
-            except Exception:
-                pass
+            # Освобождаем GPU-память после диаризации — только на ≤8 ГБ,
+            # где память в дефиците. На больших машинах это лишний оверхед
+            # (пересоздание MPS-пула на следующей записи в очереди).
+            if getattr(self, "_low_ram", False):
+                try:
+                    import torch
+                    torch.mps.empty_cache()
+                except Exception:
+                    pass
 
             # pyannote 4.x возвращает DiarizeOutput (dataclass), 3.x — Annotation напрямую
             if not hasattr(diarization, 'itertracks'):
