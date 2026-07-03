@@ -240,6 +240,7 @@ class TranscribeApp(rumps.App):
         self.token_btn         = rumps.MenuItem("🔑 Ввести токен HuggingFace →", callback=self._prompt_token)
         self.meeting_btn       = rumps.MenuItem("🤝 Записать встречу",  callback=self._toggle_meeting)
         self.note_btn          = rumps.MenuItem("📝 Записать заметку",  callback=self._toggle_note)
+        self.import_btn        = rumps.MenuItem("📂 Обработать медиафайл…", callback=self._import_media_file)
         self.process_btn       = rumps.MenuItem("▶ Обработать все записи", callback=self._process_all_pending)
         self.open_meetings_btn = rumps.MenuItem("📁 Открыть встречи",   callback=self._open_meetings)
         self.open_notes_btn    = rumps.MenuItem("📁 Открыть заметки",   callback=self._open_notes)
@@ -250,6 +251,7 @@ class TranscribeApp(rumps.App):
 
         self.meeting_btn.set_callback(None)
         self.note_btn.set_callback(None)
+        self.import_btn.set_callback(None)
         self.token_btn.hidden   = True
         self.process_btn.hidden = True
         self.restart_btn.hidden = True
@@ -258,6 +260,7 @@ class TranscribeApp(rumps.App):
             self.status_item, self.recording_item, self.processing_item,
             self.restart_btn, self.token_btn, None,
             self.meeting_btn, self.note_btn,
+            self.import_btn,
             self.process_btn, None,
             self.open_meetings_btn, self.open_notes_btn, None,
             self.settings_btn, None,
@@ -336,6 +339,7 @@ class TranscribeApp(rumps.App):
         self._ui(lambda: setattr(self.status_item, 'title', "Готово"))
         self._ui(lambda: self.meeting_btn.set_callback(self._toggle_meeting))
         self._ui(lambda: self.note_btn.set_callback(self._toggle_note))
+        self._ui(lambda: self.import_btn.set_callback(self._import_media_file))
 
         # Pending из предыдущих сессий
         queue   = load_queue_file()
@@ -799,6 +803,65 @@ class TranscribeApp(rumps.App):
                         self._queue.insert(0, item)
                     else:
                         self._queue.append(item)
+        if not self._processing:
+            threading.Thread(target=self._process_queue, daemon=True).start()
+
+    # ── Импорт медиафайла ───────────────────────────────────────────────────────
+
+    def _import_media_file(self, _):
+        types = ('{"flac","wav","mp3","m4a","mp4","aac","ogg","mov",'
+                 '"aif","aiff","opus","webm","mkv","3gp","caf"}')
+        script = ('POSIX path of (choose file with prompt '
+                  '"Выберите аудио- или видеофайл для расшифровки:" of type ' + types + ')')
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        if r.returncode != 0:
+            return  # отмена
+        src = r.stdout.strip()
+        if not src or not os.path.exists(src):
+            return
+        threading.Thread(target=self._import_worker, args=(src,), daemon=True).start()
+
+    def _import_worker(self, src):
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        timestamp = "manual_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dst = os.path.join(AUDIO_DIR, f"{timestamp}.flac")
+
+        self._ui(lambda: setattr(self.status_item, 'title', "Импорт файла — конвертация…"))
+        # Транскодируем любой формат в 16кГц моно flac (что и нужно Whisper/pyannote)
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", src, "-ar", "16000", "-ac", "1", dst],
+                capture_output=True, check=True,
+            )
+        except Exception as e:
+            msg = (e.stderr.decode()[-400:] if hasattr(e, 'stderr') and e.stderr else str(e))
+            self._ui(lambda m=msg: rumps.alert("Не удалось прочитать файл", m))
+            self._ui(lambda: setattr(self.status_item, 'title', "Готово"))
+            return
+
+        try:
+            data, sr = sf.read(dst)
+            audio_secs = len(data) / sr
+        except Exception:
+            audio_secs = 0
+
+        # Дата из исходного файла — попадёт в заголовок транскрипта
+        try:
+            start_dt = datetime.datetime.fromtimestamp(os.path.getmtime(src))
+        except Exception:
+            start_dt = datetime.datetime.now()
+
+        item = {
+            "type": "meeting", "audio_path": dst, "audio_secs": audio_secs,
+            "timestamp": timestamp, "start_dt": start_dt.isoformat(), "status": "pending",
+        }
+        add_to_queue_file(item)
+        with self._queue_lock:
+            self._queue.append(item)
+        self._ui(self._refresh_recordings_menu)
+        self._ui(self._update_app_title)
+
+        # Импортированный файл обрабатываем всегда (независимо от auto_process)
         if not self._processing:
             threading.Thread(target=self._process_queue, daemon=True).start()
 
