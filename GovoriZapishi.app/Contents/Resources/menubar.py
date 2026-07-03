@@ -468,9 +468,9 @@ class TranscribeApp(rumps.App):
     def _load_whisper(self):
         import mlx_whisper as _mlx
         import tempfile
-        MLX_MODEL = "mlx-community/whisper-medium-mlx"
-        hf_cache = os.path.expanduser("~/.cache/huggingface/hub/models--mlx-community--whisper-medium-mlx")
-        label = "Загружаю Whisper MLX..." if os.path.exists(hf_cache) else "Скачиваю Whisper medium MLX (~500 МБ)..."
+        MLX_MODEL = "mlx-community/whisper-large-v3-turbo"
+        hf_cache = os.path.expanduser("~/.cache/huggingface/hub/models--mlx-community--whisper-large-v3-turbo")
+        label = "Загружаю Whisper MLX..." if os.path.exists(hf_cache) else "Скачиваю Whisper large-v3-turbo (~1.6 ГБ)..."
         self._ui(lambda: setattr(self.status_item, 'title', label))
         silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -868,6 +868,8 @@ class TranscribeApp(rumps.App):
             self.status_item.hidden = True
         self._ui(start_timer)
 
+        import time as _time
+        _t_whisper0 = _time.monotonic()
         try:
             result = self._mlx.transcribe(audio_path, path_or_hf_repo=self.model, language="ru")
         except Exception as e:
@@ -879,10 +881,17 @@ class TranscribeApp(rumps.App):
                 self._update_app_title()
                 rumps.alert("Ошибка транскрипции", err)
             self._ui(show_err); return
+        _whisper_secs = _time.monotonic() - _t_whisper0
+        print(f"[perf] whisper {_whisper_secs:.1f}s "
+              f"({_whisper_secs / max(audio_secs, 1):.2f}x) audio={audio_secs/60:.1f}m",
+              flush=True)
 
         if rec_type == 'meeting':
+            _t_diar0 = _time.monotonic()
             try:
-                diarization = self.pipeline(audio_path)
+                # max_speakers=12 сужает O(n²) кластеризацию — на встречах спикеров
+                # почти всегда меньше, поиск по большему числу кластеров лишний
+                diarization = self.pipeline(audio_path, max_speakers=12)
             except Exception as e:
                 err = str(e)
                 def show_err():
@@ -892,6 +901,11 @@ class TranscribeApp(rumps.App):
                     self._update_app_title()
                     rumps.alert("Ошибка диаризации", err)
                 self._ui(show_err); return
+
+            _diar_secs = _time.monotonic() - _t_diar0
+            print(f"[perf] diarization {_diar_secs:.1f}s "
+                  f"({_diar_secs / max(audio_secs, 1):.2f}x) audio={audio_secs/60:.1f}m",
+                  flush=True)
 
             # Освобождаем GPU-память после диаризации — только на ≤8 ГБ,
             # где память в дефиците. На больших машинах это лишний оверхед
